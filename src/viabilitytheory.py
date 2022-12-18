@@ -93,6 +93,11 @@ class ViabilityTheoryProblem :
         r.set_integrator('dopri5')
         r.set_initial_value(Y[0], time[0])
 
+        # prepare the output variables
+        output_values = { str(variable) : [] for variable in local_equations }
+        output_values["time"] = []
+        constraint_violations = {} # when, what, by how much
+
         # start the loop, integrating for each time step and checking if the constraints are respected
         index = 1
         constraints_satisfied = True
@@ -102,16 +107,13 @@ class ViabilityTheoryProblem :
             Y.append(r.y)
             time.append(r.t)
 
-            # TODO add check on constraints
+            # TODO add checks on constraints
 
-            print(r.y)
             index += 1
 
-        # TODO REMOVE THIS
-        import sys
-        sys.exit(0)
-
-        return
+        # TODO  return a dictionary of lists for all state variables and time
+        #       also, return the dictionary of constraint violations
+        return output_values, constraint_violations
 
     def __str__(self) :
         """

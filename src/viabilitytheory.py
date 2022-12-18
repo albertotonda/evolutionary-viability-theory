@@ -63,10 +63,12 @@ class ViabilityTheoryProblem :
         # we define an internal "dX/dt" function that will be used by scipy to solve the system
         # TODO it could be better to put this at the same level at the other class methods, but
         # it only needs to be used here, and it should not be accessible from the outside...
-        def dX_dt(X_local, t_local, equations : dict, symbols : list) :
+        def dX_dt(t_local, X_local, par) :
             """
             Function that is used to solve the differential equation 
             """
+            equations, symbols = par
+
             # create dictionary symbol -> value (order of symbols is important!)
             symbols_to_values = {s : X_local[i] for i, s in enumerate(symbols)}
             symbols_to_values['t'] = t_local
@@ -102,6 +104,7 @@ class ViabilityTheoryProblem :
 
             # TODO add check on constraints
 
+            print(r.y)
             index += 1
 
         # TODO REMOVE THIS

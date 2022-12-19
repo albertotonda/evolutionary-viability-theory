@@ -47,6 +47,9 @@ class ViabilityTheoryProblem :
         """
         This part will actually solve the ODE system for a given set of initial conditions. Returns the values for each variable at each instant of time, and also the number and values of constraint violations.
         """
+        # define some utility symbols
+        inequality_symbols = [sympy.LessThan, sympy.GreaterThan, sympy.StrictLessThan, sympy.StrictGreaterThan]
+        replace_inequalities_dictionary = { s : sympy.Add for s in inequality_symbols }
 
         # preliminary steps: replace all parameters in the equations for which we have values
         local_equations = { sympy.sympify(variable) : equation for variable, equation in self.equations.items() }
@@ -147,10 +150,22 @@ class ViabilityTheoryProblem :
                         constraint_satisfied = False
 
                     if not constraint_satisfied :
+                        # we also want to know by how much the constraint was violated; this might not be super-easy,
+                        # but let's give it a try; we replace the inequality symbol with "-" and then evaluate the function
+                        subtraction = local_constraints[variable][index_constraint]
+                        for inequality_symbol in inequality_symbols :
+                            subtraction = subtraction.replace(inequality_symbol, sympy.Add)
+                            print(subtraction)
+                        subtraction = subtraction.subs( { n : sympy.Mul(sympy.sympify("-1"), n) for n in subtraction.atoms() if n.is_number })
+                        amount_of_violation = subtraction.subs(current_values)
+                        # and it's going to be in absolute value
+                        amount_of_violation = abs(amount_of_violation)
+
                         print("Constraint \"%s\" was not satisfied!" % str(constraint_equation))
                         constraint_violations.append({  "time" : r.t, 
                                                         "state_variables_values" : current_values, 
-                                                        "constraint_violated" : str(local_constraints[variable][index_constraint])
+                                                        "constraint_violated" : str(local_constraints[variable][index_constraint]),
+                                                        "amount_of_violation" : amount_of_violation,
                                                         })
                         all_constraints_satisfied = False
 
@@ -240,4 +255,4 @@ if __name__ == "__main__" :
 
     if len(constraint_violations) > 0 :
         cv = constraint_violations[0]
-        print("The simulation stopped for a constraint violation, at time %.2f, for values \"%s\", on constraint \"%s\"" % (cv["time"], str(cv["state_variables_values"]), cv["constraint_violated"]))
+        print("The simulation stopped for a constraint violation, at time %.2f, for values \"%s\", on constraint \"%s\" (by a value of %.4f)" % (cv["time"], str(cv["state_variables_values"]), cv["constraint_violated"], cv["amount_of_violation"]))

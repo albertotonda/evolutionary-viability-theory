@@ -1,16 +1,35 @@
 """
-Script that implements the evolutionary loop to create control rules using Genetic Programming.
+Script that implements the evolutionary loop to create control rules using Genetic Programming. I think we need to steal the individuals from gplearn, but I would like to keep the rest from inspyred, because it's better.
 """
+import numpy as np
 import sys
 
+# steal parts from gplearn: _Program is the basically an individual
+from gplearn._program import _Program
+
+# local module
 from viabilitytheory import ViabilityTheoryProblem
 
-def fitness_function(individual, args) :
+def generator(random, args) :
 
     return
 
-def main(viability_problem, random_seed) :
+def fitness_function(candidates, args) :
 
+    fitness_list = np.zeros(len(candidates))
+    # draw a given number of random tuples as starting conditions
+
+    # for each given candidate control rule (individual)
+
+        # for each random starting condition
+            # solve the viability problem for the given control, ideally on a different thread
+            # get the result, and compute the fitness function given its result
+
+    return fitness_list
+
+def evolve_rules(viability_problem, random_seed) :
+
+    # we use inspyred's base stuff to manage the evolution
 
     return
 
@@ -41,4 +60,7 @@ if __name__ == "__main__" :
     vp = ViabilityTheoryProblem(equations=equations, control=control, constraints=constraints, parameters=parameters)
     print("Evolving control rules for the following viability problem:", vp)
 
-    sys.exit( main(viability_problem=vp, random_seed=42) )
+    evolve_rules(viability_problem=vp, random_seed=42)
+
+    sys.exit(0)
+

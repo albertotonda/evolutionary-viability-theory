@@ -60,6 +60,13 @@ class ViabilityTheoryProblem :
 
         print(local_equations)
 
+        local_constraints = copy.deepcopy(self.constraints)
+        for variable, constraint_list in local_constraints.items() :
+            for i in range(0, len(constraint_list)) :
+                constraint_list[i] = constraint_list[i].subs(local_parameters)
+
+        print(local_constraints)
+
         # we define an internal "dX/dt" function that will be used by scipy to solve the system
         # TODO it could be better to put this at the same level at the other class methods, but
         # it only needs to be used here, and it should not be accessible from the outside...
@@ -96,23 +103,54 @@ class ViabilityTheoryProblem :
         # prepare the output variables
         output_values = { str(variable) : [] for variable in local_equations }
         output_values["time"] = []
-        constraint_violations = {} # when, what, by how much
+        constraint_violations = [] # when, what, by how much
 
         # start the loop, integrating for each time step and checking if the constraints are respected
         index = 1
-        constraints_satisfied = True
-        while r.successful() and r.t < max_time and constraints_satisfied :
+        all_constraints_satisfied = True
+        while r.successful() and r.t < max_time and all_constraints_satisfied :
 
+            # get the next point in the solution of the ODE system
             r.integrate(r.t + time_step, step=True)
             Y.append(r.y)
             time.append(r.t)
 
-            # TODO add checks on constraints
+            print("Time=%2.f, Values=%s" % (r.t, str(r.y)))
+
+            # go from the values to the symbols
+            current_values = { variable : r.y[i] for i, variable in enumerate(symbols) }
+
+            # add checks on constraints
+            for variable, constraint_list in local_constraints.items() :
+
+                for constraint_equation in constraint_list :
+                    
+                    print(constraint_equation)
+                    print(constraint_equation.subs(current_values))
+
+                    # evaluate the constraint, replacing the values of the symbols; however,
+                    # we also have to take into account that the constraint could have already been
+                    # reduced to a single value (True or False)
+                    constraint_satisfied = True
+
+                    print("Check if it is Boolean:", isinstance(constraint_equation, sympy.logic.boolalg.Boolean))
+                    print("Check if it is BooleanFalse:", isinstance(constraint_equation, sympy.logic.boolalg.BooleanFalse))
+                    print("Check if it is BooleanTrue:", isinstance(constraint_equation, sympy.logic.boolalg.BooleanTrue))
+
+                    if isinstance(constraint_equation, sympy.logic.boolalg.BooleanFalse) : 
+                        constraint_satisfied = False
+                    elif not isinstance(constraint_equation, sympy.logic.boolalg.BooleanTrue) :
+                        constraint_satsified = constraint_equation.subs(current_values) # there is no need for .evalf() here, it should be reduced to True/False
+
+                    if not constraint_satisfied :
+                        print("Constraint \"%s\" was not satisfied!" % str(constraint_equation))
+                        constraint_violations.append({"time" : r.t, "state_variables_values" : current_values, "constraint_violated" : str(constraint_equation)})
+                        all_constraints_satisfied = False
 
             index += 1
 
-        # TODO  return a dictionary of lists for all state variables and time
-        #       also, return the dictionary of constraint violations
+        # return a dictionary of lists for all state variables and time
+        # also, return the dictionary of constraint violations
         return output_values, constraint_violations
 
     def __str__(self) :
@@ -191,4 +229,8 @@ if __name__ == "__main__" :
 
     initial_conditions = {"L" : 0.5, "P" : 0.5}
     print("Running simulation with some initial conditions:", initial_conditions)
-    vp.run_simulation(initial_conditions, 0.01, 100)
+    output_values, constraint_violations = vp.run_simulation(initial_conditions, 0.01, 100)
+
+    if len(constraint_violations) > 0 :
+        cv = constraint_violations[0]
+        print("The simulation stopped for a constraint violation, at time %.2f, for values \"%s\", on constraint \"%s\"" % (cv["time"], str(cv["state_variables_values"]), cv["constraint_violated"]))

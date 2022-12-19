@@ -123,7 +123,9 @@ class ViabilityTheoryProblem :
             # add checks on constraints
             for variable, constraint_list in local_constraints.items() :
 
-                for constraint_equation in constraint_list :
+                for index_constraint in range(0, len(constraint_list)) :
+
+                    constraint_equation = local_constraints[variable][index_constraint]
                     
                     print(constraint_equation)
                     print(constraint_equation.subs(current_values))
@@ -137,14 +139,19 @@ class ViabilityTheoryProblem :
                     print("Check if it is BooleanFalse:", isinstance(constraint_equation, sympy.logic.boolalg.BooleanFalse))
                     print("Check if it is BooleanTrue:", isinstance(constraint_equation, sympy.logic.boolalg.BooleanTrue))
 
+                    if not isinstance(constraint_equation, sympy.logic.boolalg.BooleanTrue) :
+                        constraint_equation = constraint_equation.subs(current_values) # there is no need for .evalf() here, it should be reduced to True/False
+                        print("Value of constraint_equation after .subs():", constraint_equation)
+
                     if isinstance(constraint_equation, sympy.logic.boolalg.BooleanFalse) : 
                         constraint_satisfied = False
-                    elif not isinstance(constraint_equation, sympy.logic.boolalg.BooleanTrue) :
-                        constraint_satsified = constraint_equation.subs(current_values) # there is no need for .evalf() here, it should be reduced to True/False
 
                     if not constraint_satisfied :
                         print("Constraint \"%s\" was not satisfied!" % str(constraint_equation))
-                        constraint_violations.append({"time" : r.t, "state_variables_values" : current_values, "constraint_violated" : str(constraint_equation)})
+                        constraint_violations.append({  "time" : r.t, 
+                                                        "state_variables_values" : current_values, 
+                                                        "constraint_violated" : str(local_constraints[variable][index_constraint])
+                                                        })
                         all_constraints_satisfied = False
 
             index += 1
@@ -224,7 +231,7 @@ if __name__ == "__main__" :
     print(vp)
 
     print("Setting control variable to a specific value.")
-    vp.set_control({"u": 0.75})
+    vp.set_control({"u": 0.075})
     print(vp)
 
     initial_conditions = {"L" : 0.5, "P" : 0.5}

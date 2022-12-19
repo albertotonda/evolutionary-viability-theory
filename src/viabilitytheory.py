@@ -153,10 +153,12 @@ class ViabilityTheoryProblem :
                         # we also want to know by how much the constraint was violated; this might not be super-easy,
                         # but let's give it a try; we replace the inequality symbol with "-" and then evaluate the function
                         subtraction = local_constraints[variable][index_constraint]
+                        # first, we need to replace the right hand side of the inequality with the same number but multiplied by -1
+                        subtraction = subtraction.subs( { subtraction.rhs : sympy.Mul(sympy.sympify("-1"), subtraction.rhs) })
+                        print(subtraction)
                         for inequality_symbol in inequality_symbols :
                             subtraction = subtraction.replace(inequality_symbol, sympy.Add)
                             print(subtraction)
-                        subtraction = subtraction.subs( { n : sympy.Mul(sympy.sympify("-1"), n) for n in subtraction.atoms() if n.is_number })
                         amount_of_violation = subtraction.subs(current_values)
                         # and it's going to be in absolute value
                         amount_of_violation = abs(amount_of_violation)
@@ -246,7 +248,9 @@ if __name__ == "__main__" :
     print(vp)
 
     print("Setting control variable to a specific value.")
-    vp.set_control({"u": 0.075})
+    #vp.set_control({"u": 0.075})
+    #vp.set_control({"u" : "L - P + 0.001"})
+    vp.set_control({"u" : "sin(L) - cos(P)"})
     print(vp)
 
     initial_conditions = {"L" : 0.5, "P" : 0.5}

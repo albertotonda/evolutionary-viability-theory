@@ -8,7 +8,7 @@ import sys
 
 # steal parts from gplearn: _Program is the basically an individual class
 from gplearn._program import _Program
-from gplearn.functions import _Function, _function_map
+from gplearn.functions import _Function, _function_map, add2, sub2, mul2, div2, sqrt1, log1, sin1, cos1 
 
 # local modules
 from logging_utils import initialize_logging, close_logging
@@ -16,30 +16,81 @@ from multithread_utils import ThreadPool, Worker
 from viability_theory import ViabilityTheoryProblem
 from threading import Thread, Lock
 
+# this is a map used to convert from gplearn representation to string
+function2string = {
+        add2 : "+",
+        sub2 : "-",
+        mul2 : "*",
+        div2 : "/",
+        sqrt1 : "sqrt",
+        log1 : "log",
+        sin1 : "sin",
+        cos1 : "cos",
+        }
+
 def equation_string_representation(individual) :
 
-    terminals = [0]
-    output = ''
-    for i, node in enumerate(individual.program):
-        if isinstance(node, _Function):
-            terminals.append(node.arity)
-            output += node.name + '('
-        else:
-            if isinstance(node, int):
+    # recursive function that is used to visit the tree (flattened as a list)
+    def recursive_visit(individual, current_position) :
+        
+        current_node = individual.program[current_position]
+        individual_string = ""
+
+        # check the node: if it's a function, check its arity to find the next position
+        if isinstance(current_node, _Function) :
+
+            # if the function only has one argument
+            if current_node.arity == 1 :
+                individual_string += function2string[current_node] + "("
+                individual_string += recursive_visit(individual, current_position+1)
+                individual_string += ")"
+
+            elif current_node.arity == 2 :
+                individual_string += "(" + recursive_visit(individual, current_position+1)
+                individual_string += function2string[current_node]
+                individual_string += recursive_visit(individual, current_position+2) + ")"
+
+        # in this case, the current node is a terminal, and more specifically a variable
+        elif isinstance(current_node, int) :
+
                 if individual.feature_names is None:
-                    output += 'X%s' % node
+                    individual_string += 'X%s' % current_node
                 else:
-                    output += program.feature_names[node]
-            else:
-                output += '%.3f' % node
-            terminals[-1] -= 1
-            while terminals[-1] == 0:
-                terminals.pop()
-                terminals[-1] -= 1
-                output += ')'
-            if i != len(individual.program) - 1:
-                output += ', '
-        return output
+                    individual_string += individual.feature_names[current_node]
+
+        # in this last case, the current node is a terminal, and more specifically a floating point value
+        else :
+            individual_string += '%.4f' % current_node
+
+        return individual_string
+
+    # string that will contain the representation of the individual
+    individual_string = recursive_visit(individual, 0)
+
+    #terminals = [0]
+    #output = ''
+    #for i, node in enumerate(individual.program):
+    #    if isinstance(node, _Function):
+    #        terminals.append(node.arity)
+    #        output += node.name + '('
+    #    else:
+    #        if isinstance(node, int):
+    #            if individual.feature_names is None:
+    #                output += 'X%s' % node
+    #            else:
+    #                output += program.feature_names[node]
+    #        else:
+    #            output += '%.3f' % node
+    #        terminals[-1] -= 1
+    #        while terminals[-1] == 0:
+    #            terminals.pop()
+    #            terminals[-1] -= 1
+    #            output += ')'
+    #        if i != len(individual.program) - 1:
+    #            output += ', '
+    #    return output
+
+    return individual_string
 
 def generator(random, args) :
 
@@ -53,7 +104,7 @@ def generator(random, args) :
     logger.debug("Generating new individual...")
     for control_variable in args["vp_control_structure"] :
         individual[control_variable] = _Program(**args["gplearn_settings"])
-        logger.debug("For control variable \"%s\", equation \"%s\"" % (control_variable, individual[control_variable].program))
+        logger.debug("For control variable \"%s\", equation \"%s\"" % (control_variable, equation_string_representation(individual[control_variable])))
 
     return individual
 

@@ -11,6 +11,7 @@ from gplearn._program import _Program
 from gplearn.functions import _function_map
 
 # local modules
+from logging_utils import initialize_logging, close_logging
 from multithread_utils import ThreadPool, Worker
 from viability_theory import ViabilityTheoryProblem
 from threading import Thread, Lock
@@ -109,6 +110,9 @@ def evaluate_individual(individual, args, index, fitness_list, thread_lock, thre
 
 def evolve_rules(viability_problem, random_seed) :
 
+    # start logging
+    logger = initialize_logging(path=".", log_name="ea_vt.log")
+
     # hard-coded values, probably to be replaced with function arguments
     n_threads = 1
 
@@ -158,6 +162,7 @@ def evolve_rules(viability_problem, random_seed) :
                             # all items below this line go into the 'args' dictionary passed to each function
                             n_threads = n_threads,
                             random_seed = random_seed,
+                            logger = logger,
                             vp_control_structure = vp_control_structure,
                             gplearn_settings = gplearn_settings,
                             )

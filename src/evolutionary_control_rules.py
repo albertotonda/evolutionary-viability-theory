@@ -8,7 +8,7 @@ import sys
 
 # steal parts from gplearn: _Program is the basically an individual class
 from gplearn._program import _Program
-from gplearn.functions import _function_map
+from gplearn.functions import _Function, _function_map
 
 # local modules
 from logging_utils import initialize_logging, close_logging
@@ -16,15 +16,44 @@ from multithread_utils import ThreadPool, Worker
 from viability_theory import ViabilityTheoryProblem
 from threading import Thread, Lock
 
+def equation_string_representation(individual) :
+
+    terminals = [0]
+    output = ''
+    for i, node in enumerate(individual.program):
+        if isinstance(node, _Function):
+            terminals.append(node.arity)
+            output += node.name + '('
+        else:
+            if isinstance(node, int):
+                if individual.feature_names is None:
+                    output += 'X%s' % node
+                else:
+                    output += program.feature_names[node]
+            else:
+                output += '%.3f' % node
+            terminals[-1] -= 1
+            while terminals[-1] == 0:
+                terminals.pop()
+                terminals[-1] -= 1
+                output += ')'
+            if i != len(individual.program) - 1:
+                output += ', '
+        return output
+
 def generator(random, args) :
+
+    logger = args["logger"]
 
     # we can take into account the idea of having individuals
     # as a list/dictionary of equations, one per control function, depending
     # on the viability problem; so, first let's check the structure of the controls
     individual = dict()
 
+    logger.debug("Generating new individual...")
     for control_variable in args["vp_control_structure"] :
         individual[control_variable] = _Program(**args["gplearn_settings"])
+        logger.debug("For control variable \"%s\", equation \"%s\"" % (control_variable, individual[control_variable].program))
 
     return individual
 

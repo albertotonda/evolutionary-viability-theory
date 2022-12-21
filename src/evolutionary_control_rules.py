@@ -170,6 +170,9 @@ def multi_thread_evaluator(candidates, args) :
     # initially set to 0.0 (setting it to None is also possible)
     fitness_list = [0.0] * len(candidates)
 
+    time_start = datetime.datetime.now()
+    #time_start = time.time()
+
     # create Lock object and initialize thread pool
     thread_lock = Lock()
     thread_pool = ThreadPool(n_threads) 
@@ -181,13 +184,13 @@ def multi_thread_evaluator(candidates, args) :
 
     # wait the completion of all threads
     logger.debug("Starting multi-threaded evaluation...")
-    time_start = datetime.datetime.now()
 
     thread_pool.wait_completion()
 
     time_end = datetime.datetime.now()
+    #time_end = time.time()
     time_difference = time_end - time_start
-    logger.debug("The evaluation lasted %.2f" % (time_difference.total_seconds() / float(60.0)))
+    logger.debug("The evaluation lasted %.2f minutes" % (time_difference.total_seconds() / float(60.0)))
 
     return fitness_list
 

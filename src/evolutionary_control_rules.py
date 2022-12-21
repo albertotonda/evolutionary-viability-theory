@@ -2,6 +2,7 @@
 Script that implements the evolutionary loop to create control rules using Genetic Programming. I think we need to steal the individuals from gplearn, but I would like to keep the rest from inspyred, because it's better.
 """
 import copy
+import datetime
 import inspyred
 import numpy as np
 import random
@@ -152,8 +153,10 @@ def multi_thread_evaluator(candidates, args) :
     Wrapper function for multi-thread evaluation of the fitness.
     """
 
-    # get logger from the args
+    # get logger and other useful information from the args dictionary
     logger = args.get("logger", None)
+    logger.info("Now starting the evaluation of %d individuals in the population..." % len(candidates))
+
     n_threads = args["n_threads"]
     n_initial_conditions = args["n_initial_conditions"]
 
@@ -177,8 +180,14 @@ def multi_thread_evaluator(candidates, args) :
     thread_pool.map(evaluate_individual, arguments)
 
     # wait the completion of all threads
-    if logger : logger.debug("Starting multi-threaded evaluation...")
+    logger.debug("Starting multi-threaded evaluation...")
+    time_start = datetime.datetime.now()
+
     thread_pool.wait_completion()
+
+    time_end = datetime.datetime.now()
+    time_difference = time_end - time_start
+    logger.debug("The evaluation lasted %.2f" % (time_difference.total_seconds() / float(60.0)))
 
     return fitness_list
 

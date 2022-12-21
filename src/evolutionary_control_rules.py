@@ -1,6 +1,7 @@
 """
 Script that implements the evolutionary loop to create control rules using Genetic Programming. I think we need to steal the individuals from gplearn, but I would like to keep the rest from inspyred, because it's better.
 """
+import copy
 import inspyred
 import numpy as np
 import random
@@ -88,19 +89,44 @@ def generator(random, args) :
 
     return individual
 
-def fitness_function(candidates, args) :
+def fitness_function(individual, args) :
 
-    fitness_list = np.zeros(len(candidates))
-    
-    # draw a given number of random tuples as starting conditions
+    logger = args["logger"]
 
-    # for each given candidate control rule (individual)
+    fitness = 0.0
+    initial_conditions = args["current_initial_conditions"]
+    vp = args["viability_problem"]
+    time_step = args["time_step"]
+    max_time = args["max_time"]
 
-        # for each random starting condition
-            # solve the viability problem for the given control, ideally on a different thread
-            # get the result, and compute the fitness function given its result
+    # create a local copy of the viability problem, that will be modified only here
+    vp = copy.deepcopy(vp)
 
-    return fitness_list
+    # modify it, so that the control rules are now the same as the individual
+    control_rules = { variable : equation_string_representation(control_rule) for variable, control_rule in individual.items() }
+    logger.debug("Now evaluating individual corresponding to \"%s\"..." % control_rules)
+    vp.set_control(control_rules)
+    state_variables = [ v for v in vp.equations ]
+
+    # and now, we run a simulation for each initial condition
+    for ic in initial_conditions :
+        # there might be some crash here, so 
+        try :
+            output_values, constraint_violations = vp.run_simulation(ic, time_step, max_time) 
+
+            # compute the fitness, based on how long the simulation ran before a constraint violation
+            fitness += len(output_values[state_variables[1]]) / (max_time/time_step)
+
+        except Exception :
+            # if executing the control rules raises an exception, fitness becomes zero and we immediately
+            # terminate the loop
+            logger.debug("Individual \"%s\" created an exception, it will have fitness zero" % control_rules)
+            fitness = 0.0
+            break 
+
+    logger.debug("Fitness for individual \"%s\" is %.4f" % (control_rules, fitness))
+
+    return fitness
 
 @inspyred.ec.variators.crossover
 def variator(random, individual1, individual2, args) :
@@ -131,9 +157,11 @@ def multi_thread_evaluator(candidates, args) :
     n_threads = args["n_threads"]
     n_initial_conditions = args["n_initial_conditions"]
 
-    # NOTE we have to draw some random initial conditions that will be shared by all individuals in this generation
+    # NOTE  we have to draw some random initial conditions that will be shared by all individuals in this generation
+    #       we save them inside the "args" dictionary, to make them accessible to other functions
     initial_conditions = [ args["viability_problem"].get_random_viable_point(args["random"]) for i in range(0, n_initial_conditions) ]
-    print(initial_conditions)
+    logger.debug("Initial conditions for this generation: %s" % str(initial_conditions))
+    args["current_initial_conditions"] = initial_conditions
 
     # create list of fitness values, for each individual to be evaluated
     # initially set to 0.0 (setting it to None is also possible)
@@ -177,10 +205,13 @@ def evolve_rules(viability_problem, random_seed) :
 
     # start logging
     logger = initialize_logging(path=".", log_name="ea_vt.log")
+    logger.info("Setting up evolutionary algorithm...")
 
     # hard-coded values, probably to be replaced with function arguments
     n_threads = 1
-    n_initial_conditions = 100
+    n_initial_conditions = 10
+    time_step = 0.1
+    max_time = 100
 
     # initialize the pseudo-random number generators
     prng = random.Random(random_seed)
@@ -217,16 +248,19 @@ def evolve_rules(viability_problem, random_seed) :
     ea.variator = variator
     ea.observer = observer
 
+    logger.info("Starting evolutionary optimization...")
     final_population = ea.evolve(
                             generator=generator,
                             evaluator=multi_thread_evaluator,
                             pop_size=100,
                             num_selected=150,
-                            maximize=False,
+                            maximize=True,
                             max_evaluations=10000,
 
                             # all items below this line go into the 'args' dictionary passed to each function
                             n_threads = n_threads,
+                            time_step = time_step,
+                            max_time = max_time,
                             random_seed = random_seed,
                             logger = logger,
                             vp_control_structure = vp_control_structure,

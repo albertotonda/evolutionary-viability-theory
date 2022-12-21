@@ -62,14 +62,14 @@ class ViabilityTheoryProblem :
         for state_variable in local_equations :
             local_equations[state_variable] = local_equations[state_variable].subs(local_parameters) 
 
-        print(local_equations)
+        #print(local_equations)
 
         local_constraints = copy.deepcopy(self.constraints)
         for variable, constraint_list in local_constraints.items() :
             for i in range(0, len(constraint_list)) :
                 constraint_list[i] = constraint_list[i].subs(local_parameters)
 
-        print(local_constraints)
+        #print(local_constraints)
 
         # we define an internal "dX/dt" function that will be used by scipy to solve the system
         # TODO it could be better to put this at the same level at the other class methods, but
@@ -119,10 +119,14 @@ class ViabilityTheoryProblem :
             Y.append(r.y)
             time.append(r.t)
 
-            print("Time=%2.f, Values=%s" % (r.t, str(r.y)))
+            #print("Time=%2.f, Values=%s" % (r.t, str(r.y)))
 
             # go from the values to the symbols
             current_values = { variable : r.y[i] for i, variable in enumerate(symbols) }
+
+            # add the current values to the symbols
+            for variable in current_values :
+                output_values[str(variable)].append( current_values[variable] )
 
             # add checks on constraints
             for variable, constraint_list in local_constraints.items() :
@@ -131,21 +135,21 @@ class ViabilityTheoryProblem :
 
                     constraint_equation = local_constraints[variable][index_constraint]
                     
-                    print(constraint_equation)
-                    print(constraint_equation.subs(current_values))
+                    #print(constraint_equation)
+                    #print(constraint_equation.subs(current_values))
 
                     # evaluate the constraint, replacing the values of the symbols; however,
                     # we also have to take into account that the constraint could have already been
                     # reduced to a single value (True or False)
                     constraint_satisfied = True
 
-                    print("Check if it is Boolean:", isinstance(constraint_equation, sympy.logic.boolalg.Boolean))
-                    print("Check if it is BooleanFalse:", isinstance(constraint_equation, sympy.logic.boolalg.BooleanFalse))
-                    print("Check if it is BooleanTrue:", isinstance(constraint_equation, sympy.logic.boolalg.BooleanTrue))
+                    #print("Check if it is Boolean:", isinstance(constraint_equation, sympy.logic.boolalg.Boolean))
+                    #print("Check if it is BooleanFalse:", isinstance(constraint_equation, sympy.logic.boolalg.BooleanFalse))
+                    #print("Check if it is BooleanTrue:", isinstance(constraint_equation, sympy.logic.boolalg.BooleanTrue))
 
                     if not isinstance(constraint_equation, sympy.logic.boolalg.BooleanTrue) :
                         constraint_equation = constraint_equation.subs(current_values) # there is no need for .evalf() here, it should be reduced to True/False
-                        print("Value of constraint_equation after .subs():", constraint_equation)
+                        #print("Value of constraint_equation after .subs():", constraint_equation)
 
                     if isinstance(constraint_equation, sympy.logic.boolalg.BooleanFalse) : 
                         constraint_satisfied = False
@@ -156,15 +160,15 @@ class ViabilityTheoryProblem :
                         subtraction = local_constraints[variable][index_constraint]
                         # first, we need to replace the right hand side of the inequality with the same number but multiplied by -1
                         subtraction = subtraction.subs( { subtraction.rhs : sympy.Mul(sympy.sympify("-1"), subtraction.rhs) })
-                        print(subtraction)
+                        #print(subtraction)
                         for inequality_symbol in inequality_symbols :
                             subtraction = subtraction.replace(inequality_symbol, sympy.Add)
-                            print(subtraction)
+                            #print(subtraction)
                         amount_of_violation = subtraction.subs(current_values)
                         # and it's going to be in absolute value
                         amount_of_violation = abs(amount_of_violation)
 
-                        print("Constraint \"%s\" was not satisfied!" % str(constraint_equation))
+                        #print("Constraint \"%s\" was not satisfied!" % str(constraint_equation))
                         constraint_violations.append({  "time" : r.t, 
                                                         "state_variables_values" : current_values, 
                                                         "constraint_violated" : str(local_constraints[variable][index_constraint]),
@@ -176,6 +180,7 @@ class ViabilityTheoryProblem :
 
         # return a dictionary of lists for all state variables and time
         # also, return the dictionary of constraint violations
+        output_values["time"] = time
         return output_values, constraint_violations
 
     def get_random_viable_point(self, random) :
@@ -210,7 +215,8 @@ class ViabilityTheoryProblem :
                     minimum = value + np.finfo(float).eps
 
             # here we now have reliable values for maximum and minimum
-            print("For state variable \"%s\", minimum=%.4f maximum=%.4f" % (state_variable, minimum, maximum))
+            # TODO maybe I could use a logger for these messages
+            #print("For state variable \"%s\", minimum=%.4f maximum=%.4f" % (state_variable, minimum, maximum))
 
             # and finally, draw the random initial condition for that state variable
             point[state_variable] = random.uniform(minimum, maximum)

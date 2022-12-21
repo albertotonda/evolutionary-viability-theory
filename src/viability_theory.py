@@ -2,6 +2,7 @@
 Set of scripts for managing viability theory problems. It's going to use symbolic computation.
 """
 import copy
+import numpy as np
 import sympy
 
 from scipy import integrate
@@ -176,6 +177,45 @@ class ViabilityTheoryProblem :
         # return a dictionary of lists for all state variables and time
         # also, return the dictionary of constraint violations
         return output_values, constraint_violations
+
+    def get_random_viable_point(self, random) :
+        """
+        Returns a point that is viable (e.g. does not violate constraints)
+        """
+        point = dict()
+
+        # can we find min and max for each state variable from the constraints?
+        for state_variable in self.equations :
+
+            minimum = np.inf
+            maximum = -np.inf
+
+            # go over the list of constraints for that variable
+            for constraint in self.constraints[state_variable] :
+
+                # create a new constraint, replacing the parameters
+                constraint_with_value = constraint.subs(self.parameters)
+
+                # check the type of inequality inside the constraint
+                atoms = constraint_with_value.atoms()
+                value = [ a for a in atoms if isinstance(a, sympy.Number) ][0].evalf() 
+
+                if len([a.func for a in constraint.atoms(sympy.LessThan)]) > 0 :
+                    maximum = value
+                elif len([a.func for a in constraint.atoms(sympy.StrictLessThan)]) > 0 :
+                    maximum = value - np.finfo(float).eps
+                elif len([a.func for a in constraint.atoms(sympy.GreaterThan)]) > 0 :
+                    minimum = value
+                elif len([a.func for a in constraint.atoms(sympy.StrictGreaterThan)]) > 0 :
+                    minimum = value + np.finfo(float).eps
+
+            # here we now have reliable values for maximum and minimum
+            print("For state variable \"%s\", minimum=%.4f maximum=%.4f" % (state_variable, minimum, maximum))
+
+            # and finally, draw the random initial condition for that state variable
+            point[state_variable] = random.uniform(minimum, maximum)
+
+        return point
 
     def __str__(self) :
         """

@@ -6,7 +6,7 @@ import numpy as np
 import random
 import sys
 
-# steal parts from gplearn: _Program is the basically an individual class
+# steal parts from gplearn: _Program is the basically an individual class, the others are functions
 from gplearn._program import _Program
 from gplearn.functions import _Function, _function_map, add2, sub2, mul2, div2, sqrt1, log1, sin1, cos1 
 
@@ -67,32 +67,12 @@ def equation_string_representation(individual) :
     # string that will contain the representation of the individual
     individual_string = recursive_visit(individual, 0)
 
-    #terminals = [0]
-    #output = ''
-    #for i, node in enumerate(individual.program):
-    #    if isinstance(node, _Function):
-    #        terminals.append(node.arity)
-    #        output += node.name + '('
-    #    else:
-    #        if isinstance(node, int):
-    #            if individual.feature_names is None:
-    #                output += 'X%s' % node
-    #            else:
-    #                output += program.feature_names[node]
-    #        else:
-    #            output += '%.3f' % node
-    #        terminals[-1] -= 1
-    #        while terminals[-1] == 0:
-    #            terminals.pop()
-    #            terminals[-1] -= 1
-    #            output += ')'
-    #        if i != len(individual.program) - 1:
-    #            output += ', '
-    #    return output
-
     return individual_string
 
 def generator(random, args) :
+    """
+    Generates the initial population for the evolutionary algorithm, using gplearn.
+    """
 
     logger = args["logger"]
 
@@ -149,6 +129,11 @@ def multi_thread_evaluator(candidates, args) :
     # get logger from the args
     logger = args.get("logger", None)
     n_threads = args["n_threads"]
+    n_initial_conditions = args["n_initial_conditions"]
+
+    # NOTE we have to draw some random initial conditions that will be shared by all individuals in this generation
+    initial_conditions = [ args["viability_problem"].get_random_viable_point(args["random"]) for i in range(0, n_initial_conditions) ]
+    print(initial_conditions)
 
     # create list of fitness values, for each individual to be evaluated
     # initially set to 0.0 (setting it to None is also possible)
@@ -195,6 +180,7 @@ def evolve_rules(viability_problem, random_seed) :
 
     # hard-coded values, probably to be replaced with function arguments
     n_threads = 1
+    n_initial_conditions = 100
 
     # initialize the pseudo-random number generators
     prng = random.Random(random_seed)
@@ -244,7 +230,10 @@ def evolve_rules(viability_problem, random_seed) :
                             random_seed = random_seed,
                             logger = logger,
                             vp_control_structure = vp_control_structure,
+                            viability_problem = viability_problem,
                             gplearn_settings = gplearn_settings,
+                            n_initial_conditions = n_initial_conditions,
+                            random = prng,
                             )
 
     return

@@ -33,6 +33,17 @@ function2string = {
         cos1 : "cos",
         }
 
+function2string = {
+        "add" : "+",
+        "sub" : "-",
+        "mul" : "*",
+        "div" : "/",
+        "sqrt" : "sqrt",
+        "log" : "log",
+        "sin" : "sin",
+        "cos" : "cos",
+        }
+
 def equation_string_representation(individual) :
 
     # recursive function that is used to visit the tree (flattened as a list)
@@ -46,13 +57,15 @@ def equation_string_representation(individual) :
 
             # if the function only has one argument
             if current_node.arity == 1 :
-                individual_string += function2string[current_node] + "("
+                #individual_string += function2string.get(current_node, "Error") + "("
+                individual_string += function2string[current_node.name] + "("
                 individual_string += recursive_visit(individual, current_position+1)
                 individual_string += ")"
 
             elif current_node.arity == 2 :
                 individual_string += "(" + recursive_visit(individual, current_position+1)
-                individual_string += function2string[current_node]
+                #individual_string += function2string.get(current_node, "Error")
+                individual_string += function2string[current_node.name]
                 individual_string += recursive_visit(individual, current_position+2) + ")"
 
         # in this case, the current node is a terminal, and more specifically a variable
@@ -86,6 +99,16 @@ def individual2string(candidate) :
 
     return individual_string[:-1] # remove the last ','
 
+def are_individuals_equal(individual1, individual2) :
+    """
+    Utility function, to check whether individuals are identical.
+    """
+    for variable in individual1 :
+        if sympy.sympify(equation_string_representation(individual1[variable])) != sympy.sympify(equation_string_representation(individual2[variable])) :
+            return False
+
+    return True
+
 def generator(random, args) :
     """
     Generates the initial population for the evolutionary algorithm, using gplearn.
@@ -106,6 +129,9 @@ def generator(random, args) :
     return individual
 
 def fitness_function(individual, args) :
+    """
+    Fitness function for an individual.
+    """
 
     logger = args["logger"]
 
@@ -160,8 +186,74 @@ def variator(random, individual1, individual2, args) :
     """
     The variator for this particular problem has to be decorated as crossover, as it can perform multiple operations on one or two individuals.
     """
+    logger = args["logger"]
+    random_state = args["random_state"] # we are going to use a numpy pseudo-random number generator, because gplearn likes that
+    p_crossover = args["p_crossover"]
+    p_subtree = args["p_subtree"]
+    p_hoist = args["p_hoist"]
+    p_point = args["p_point"]
 
-    return
+    offspring = []
+
+    # the genome of an individual is a dictionary, with one gplearn program for each control variable
+    # this variator should take that into account, and consider that sometimes it's better to just change
+    # one or few of the control rules, to preserve locality; at the moment, there is a probabilty that
+    # nothing happens, but then we have to check that the new individual is actually different from individual1
+    logger.debug("Generating new individual...")
+    new_individual = { variable : None for variable in individual1 }
+
+    program = None
+    for variable in new_individual :
+        # let's select a probability to apply one of the mutation operators
+        p = random_state.uniform()
+        logger.debug("Creating gplearn program for state variable \"%s\"..." % variable)
+
+        new_program = None
+        if p < p_crossover :
+            logger.debug("Performing a crossover...")
+            program, removed, remains = individual1[variable].crossover(individual2[variable].program, random_state)
+
+        elif p < (p_crossover + p_subtree) :
+            logger.debug("Performing a subtree mutation...")
+            program, removed, _ = individual1[variable].subtree_mutation(random_state)
+
+        elif p < (p_crossover + p_subtree + p_hoist) :
+            logger.debug("Performing a hoist mutation...")
+            program, removed = individual1[variable].hoist_mutation(random_state)
+
+        elif p < (p_crossover + p_subtree + p_hoist + p_point) :
+            logger.debug("Performing a point mutation...")
+            program, mutated = individual1[variable].point_mutation(random_state)
+
+        else :
+            logger.debug("Copying the original genome from individual1...")
+            program = individual1[variable].reproduce() 
+
+        # create new instance of _Program
+        new_program = _Program(function_set=individual1[variable].function_set,
+                   arities=individual1[variable].arities,
+                   init_depth=individual1[variable].init_depth,
+                   init_method=individual1[variable].init_method,
+                   n_features=individual1[variable].n_features,
+                   metric=individual1[variable].metric,
+                   transformer=individual1[variable].transformer,
+                   const_range=individual1[variable].const_range,
+                   p_point_replace=individual1[variable].p_point_replace,
+                   parsimony_coefficient=individual1[variable].parsimony_coefficient,
+                   feature_names=individual1[variable].feature_names,
+                   random_state=random_state,
+                   program=program)
+
+        logger.debug("New program generated: %s" % str(new_program))
+        new_individual[variable] = new_program
+
+    # check if the new individual is identical to individual 1
+    logger.debug("New candidate individual: \"%s\"" % str(new_individual))
+    logger.debug("New candidate individual: \"%s\"" % individual2string(new_individual))
+    if not are_individuals_equal(individual1, new_individual) :
+        offspring.append(new_individual)
+
+    return offspring
 
 
 def observer(population, num_generations, num_evaluations, args) :
@@ -295,9 +387,16 @@ def evolve_rules(viability_problem, random_seed) :
     vp_variables = [ variable for variable in viability_problem.equations ]
 
     # then, we setup all necessary values for GPlearn individuals, _Program instances
+    function_set = [ _function_map[f] for f in ['add', 'sub', 'mul', 'div', 'sqrt', 'log', 'sin', 'cos'] ]
+    arities = {} # 'arities' is a dictionary that contains information on the number of arguments for each function
+    for function in function_set :
+        arity = function.arity
+        arities[arity] = arities.get(arity, [])
+        arities[arity].append(function)
+
     gplearn_settings = {
-            "function_set" : [ _function_map[f] for f in ['add', 'sub', 'mul', 'div', 'sqrt', 'log', 'sin', 'cos'] ],
-            "arities" : (2, 2, 2, 2, 1, 1, 1, 1),
+            "function_set" : function_set,
+            "arities" : arities,
             "init_depth" : (2, 4),
             "init_method" : "half and half",
             "n_features" : len(vp_variables),
@@ -327,20 +426,27 @@ def evolve_rules(viability_problem, random_seed) :
                             pop_size=100,
                             num_selected=150,
                             maximize=True,
-                            max_evaluations=10000,
+                            max_evaluations=1000
 
                             # all items below this line go into the 'args' dictionary passed to each function
-                            n_threads = n_threads,
-                            time_step = time_step,
-                            max_time = max_time,
-                            random_seed = random_seed,
+                            directory_output = directory_output,
                             logger = logger,
+                            n_threads = n_threads,
+                            random_seed = random_seed, # this is the numpy random number generator, used by gplearn
+                            random = prng, # this is the random.Random instance used by inspyred
+                            random_state = nprs,
                             vp_control_structure = vp_control_structure,
                             viability_problem = viability_problem,
-                            gplearn_settings = gplearn_settings,
+                            # these parameters below are used for the evaluation of candidate solutions
+                            time_step = time_step,
+                            max_time = max_time,
                             n_initial_conditions = n_initial_conditions,
-                            random = prng,
-                            directory_output = directory_output,
+                            # settings for gplearn
+                            gplearn_settings = gplearn_settings,
+                            p_crossover = 0.4,
+                            p_hoist = 0.1,
+                            p_subtree = 0.1,
+                            p_point = 0.1,
                             )
 
     return

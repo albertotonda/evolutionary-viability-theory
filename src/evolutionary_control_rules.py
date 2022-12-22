@@ -5,7 +5,10 @@ import copy
 import datetime
 import inspyred
 import numpy as np
+import os
+import pandas as pd
 import random
+import sympy
 import sys
 
 # steal parts from gplearn: _Program is the basically an individual class, the others are functions
@@ -71,6 +74,18 @@ def equation_string_representation(individual) :
 
     return individual_string
 
+def individual2string(candidate) :
+    """
+    Utility function to convert an individual's genotype to a string. Individuals here are dictionaries of programs.
+    """
+    individual_string = ""
+
+    for variable, program in candidate.items() :
+        individual_string += str(variable) + " -> {"
+        individual_string += equation_string_representation(program) + "},"
+
+    return individual_string[:-1] # remove the last ','
+
 def generator(random, args) :
     """
     Generates the initial population for the evolutionary algorithm, using gplearn.
@@ -100,12 +115,23 @@ def fitness_function(individual, args) :
     time_step = args["time_step"]
     max_time = args["max_time"]
 
-    # create a local copy of the viability problem, that will be modified only here
-    vp = copy.deepcopy(vp)
-
-    # modify it, so that the control rules are now the same as the individual
+    # evaluating one solution takes a considerable amount of time, so we will first make a check;
+    # if all control rules defined in the individual reduce to a constant, we can discard it 
     control_rules = { variable : equation_string_representation(control_rule) for variable, control_rule in individual.items() }
     logger.debug("Now evaluating individual corresponding to \"%s\"..." % control_rules)
+
+    is_rule_constant = []
+    for variable, rule in control_rules.items() :
+        expression = sympy.sympify(rule)
+        is_rule_constant.append(expression.is_constant())
+
+    if all(is_rule_constant) :
+        logger.debug("All control rules of the individual are constant, discarding...")
+        return fitness
+
+    # otherwise, create a local copy of the viability problem, that will be modified only here
+    vp = copy.deepcopy(vp)
+    # modify it, so that the control rules are now the same as the individual
     vp.set_control(control_rules)
     state_variables = [ v for v in vp.equations ]
 
@@ -144,7 +170,37 @@ def observer(population, num_generations, num_evaluations, args) :
     evolutionary approaches.
     """
 
+    logger = args["logger"]
+    best_individual = max(population, key=lambda x : x.fitness)
+    
+    # get some information
+    best_string = individual2string(best_individual.candidate)
+    best_fitness = best_individual.fitness
+
     # print the equation(s) corresponding to the best individual
+    logger.info("Generation #%d (%d evaluations) Best individual: \"%s\"; Best fitness: %.4f" % (num_generations, num_evaluations, best_string, best_fitness))
+    
+    # save the current generation
+    file_generation = os.path.join(args["directory_output"], "generation-%d.csv" % num_generations)
+    logger.debug("Saving current generation to file \"%s\"..." % file_generation)
+
+    dictionary_generation = {
+            "generation" : [],
+            "individual" : [],
+            "fitness" : []
+            }
+
+    dictionary_generation["generation"] = [num_generations] * len(population)
+
+    for i, ci in enumerate(args["current_initial_conditions"]) :
+        dictionary_generation["initial_conditions_%d" % i] = [str(ci)] * len(population)
+
+    for individual in population :
+        dictionary_generation["individual"].append(individual2string(individual.candidate))
+        dictionary_generation["fitness"].append(individual.fitness)
+
+    df = pd.DataFrame.from_dict(dictionary_generation)
+    df.to_csv(file_generation, index=False)
 
     return
 
@@ -171,7 +227,6 @@ def multi_thread_evaluator(candidates, args) :
     fitness_list = [0.0] * len(candidates)
 
     time_start = datetime.datetime.now()
-    #time_start = time.time()
 
     # create Lock object and initialize thread pool
     thread_lock = Lock()
@@ -188,7 +243,6 @@ def multi_thread_evaluator(candidates, args) :
     thread_pool.wait_completion()
 
     time_end = datetime.datetime.now()
-    #time_end = time.time()
     time_difference = time_end - time_start
     logger.debug("The evaluation lasted %.2f minutes" % (time_difference.total_seconds() / float(60.0)))
 
@@ -215,8 +269,14 @@ def evaluate_individual(individual, args, index, fitness_list, thread_lock, thre
 
 def evolve_rules(viability_problem, random_seed) :
 
+    # create directory with name in the date
+    directory_output = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + "-viability-theory" 
+    if not os.path.exists(directory_output) :
+        os.makedirs(directory_output)
+
     # start logging
-    logger = initialize_logging(path=".", log_name="ea_vt.log")
+    logger = initialize_logging(path=directory_output, log_name="log", date=True)
+    logger.info("Starting, all results will be saved in folder \"%s\"..." % directory_output)
     logger.info("Setting up evolutionary algorithm...")
 
     # hard-coded values, probably to be replaced with function arguments
@@ -280,6 +340,7 @@ def evolve_rules(viability_problem, random_seed) :
                             gplearn_settings = gplearn_settings,
                             n_initial_conditions = n_initial_conditions,
                             random = prng,
+                            directory_output = directory_output,
                             )
 
     return

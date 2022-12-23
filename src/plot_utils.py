@@ -9,6 +9,16 @@ import seaborn as sns
 from matplotlib.collections import LineCollection
 from matplotlib.patches import Rectangle
 
+def draw_arrow(ax, arr_start, arr_end, color='red'):
+    """
+    Utility function to draw an arrow on a line
+    """
+    dx = arr_end[0] - arr_start[0]
+    dy = arr_end[1] - arr_start[1]
+    ax.arrow(arr_start[0], arr_start[1], dx, dy, head_width=0.001, head_length=0.001, length_includes_head=True, color=color)
+
+    return
+
 def plot_vp_trajectories(vp, initial_conditions, time_step=0.1, max_time=100, color=None, label=None, fig=None) :
     """
     Function that plots trajectories or just add trajectories to an existing figures, with a certain color or caption
@@ -100,8 +110,12 @@ def plot_vp_trajectories(vp, initial_conditions, time_step=0.1, max_time=100, co
             trajectory_label = None
             if index == 0 :
                 trajectory_label = label
-
+            
+            # this draw the trajectory
             ax.plot(x, y, color=color, label=trajectory_label) 
+            # this draws an arrow
+            #ax.arrow(x[-1], y[-1], 0.01, 0.01, length_includes_head=True, head_width=.05, color=color)
+            #draw_arrow(ax, (x[0], y[0]), (x[-1], y[-1]), color=color)
 
         ax.set_title("Plot for %s, %s" % (var_x, var_y))
         ax.set_xlabel(var_x)

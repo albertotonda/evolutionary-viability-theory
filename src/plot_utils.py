@@ -67,7 +67,8 @@ def plot_vp_trajectories(vp, initial_conditions, time_step=0.1, max_time=100, co
             y_min, y_max = vp.get_variable_boundaries(var_y)
 
             # TODO check that no value is infinite, here...
-            ax.add_patch(Rectangle((x_min, y_min), x_max - x_min, y_max - y_min, edgecolor='red', linestyle='--', facecolor='none', fill=False, label="Viable area")) 
+            ax.add_patch(Rectangle((x_min, y_min), x_max - x_min, y_max - y_min, 
+                edgecolor='green', linestyle='--', facecolor='none', fill=False, label="Viable area")) 
 
     else :
 
@@ -76,12 +77,17 @@ def plot_vp_trajectories(vp, initial_conditions, time_step=0.1, max_time=100, co
         if not hasattr(axs, '__iter__') :
             axs = [axs]
 
+    # we set this parameter to autoresize the canvas
+    fig.set_tight_layout(True)
+
     # now, we solve the differential equations in the viability problem instance for each set of initial conditions
     print("Solving differential equations for the initial conditions...")
     trajectories = []
+    constraint_violations = []
     for ic in initial_conditions :
-        trajectory, _ = vp.run_simulation(ic, time_step, max_time)
+        trajectory, constraint_violation = vp.run_simulation(ic, time_step, max_time)
         trajectories.append( trajectory )
+        constraint_violations.append( constraint_violation )
 
     # then, we go subplot by subplot, depending on the variable pairs; the pairs will be plot as 'x' or 'y' in order of appearance 
     for index, variable_pair in enumerate(variable_pairs) :
@@ -91,28 +97,49 @@ def plot_vp_trajectories(vp, initial_conditions, time_step=0.1, max_time=100, co
         ax = axs[index]
 
         # TODO if no color was specified, create a cool colormap here
+        # TODO let's try to make something different, when trajectories with a constraint violation are in red, the others are in green
 
         # transform the list of initial conditions in two arrays, one for variable x and one for variable y
         ic_plot_x = []
         ic_plot_y = []
 
-        for ic in initial_conditions :
+        for i_ic, ic in enumerate(initial_conditions) :
             ic_plot_x.append(ic[var_x])
             ic_plot_y.append(ic[var_y])
 
-        ax.scatter(ic_plot_x, ic_plot_y, marker='x', color=color)
+        #ax.scatter(ic_plot_x, ic_plot_y, marker='x', color=color)
 
         # now, plot the trajectories for this specific set of two variables
         for index, trajectory in enumerate(trajectories) :
+            x_ic = initial_conditions[index][var_x]
+            y_ic = initial_conditions[index][var_y]
+
             x = trajectory[var_x]
             y = trajectory[var_y]
 
             trajectory_label = None
+            ic_label = None
             if index == 0 :
                 trajectory_label = label
+                ic_label = "Initial conditions"
+
+            # let's find the color
+            trajectory_color = 'green'
+            if len(constraint_violations[index]) > 0 :
+                trajectory_color = 'red'
             
-            # this draw the trajectory
-            ax.plot(x, y, color=color, label=trajectory_label) 
+            # this marks the initial condition
+            ax.scatter(x_ic, y_ic, marker='x', color=trajectory_color, label=ic_label)
+            # this draws the trajectory
+            ax.plot(x, y, color=trajectory_color, label=trajectory_label) 
+
+            # now, if the trajectory at a certain point became non-viable, I want to annotate why
+            if trajectory_color == 'red' :
+                #print(constraint_violations[index])
+                text = str(constraint_violations[index][0]['constraint_violated'])
+                t = ax.text(x_ic + 0.02, y_ic + 0.03, text, fontsize=6)
+                t.set_bbox(dict(facecolor='white', alpha=0.5, edgecolor='black'))
+
             # this draws an arrow
             #ax.arrow(x[-1], y[-1], 0.01, 0.01, length_includes_head=True, head_width=.05, color=color)
             #draw_arrow(ax, (x[0], y[0]), (x[-1], y[-1]), color=color)
@@ -187,7 +214,7 @@ if __name__ == "__main__" :
     time_step = 0.1
     max_time = 100
 
-    fig = plot_vp_trajectories(vp, initial_conditions, time_step=time_step, max_time=max_time, color='red', label='Training IC')
+    fig = plot_vp_trajectories(vp, initial_conditions, time_step=time_step, max_time=max_time, color='red', label='Trajectories')
     plt.savefig("figure-initial-conditions-training.png", dpi=300)
 
     sys.exit(0)

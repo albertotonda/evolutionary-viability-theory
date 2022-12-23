@@ -94,10 +94,10 @@ def individual2string(candidate) :
     individual_string = ""
 
     for variable, program in candidate.items() :
-        individual_string += str(variable) + " -> {"
-        individual_string += equation_string_representation(program) + "},"
+        individual_string += "\'" + str(variable) + "\' : \'"
+        individual_string += equation_string_representation(program) + "\', "
 
-    return individual_string[:-1] # remove the last ','
+    return individual_string[:-2] # remove the last ', '
 
 def are_individuals_equal(individual1, individual2) :
     """
@@ -372,7 +372,7 @@ def evolve_rules(viability_problem, random_seed) :
     logger.info("Setting up evolutionary algorithm...")
 
     # hard-coded values, probably to be replaced with function arguments
-    n_threads = 1
+    n_threads = 8
     n_initial_conditions = 10
     time_step = 0.1
     max_time = 100
@@ -426,7 +426,7 @@ def evolve_rules(viability_problem, random_seed) :
                             pop_size=100,
                             num_selected=150,
                             maximize=True,
-                            max_evaluations=1000
+                            max_evaluations=1000,
 
                             # all items below this line go into the 'args' dictionary passed to each function
                             directory_output = directory_output,

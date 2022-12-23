@@ -63,9 +63,11 @@ class ViabilityTheoryProblem :
             local_equations[state_variable] = local_equations[state_variable].subs(local_parameters) 
 
         #print(local_equations)
+        print(local_parameters)
 
         local_constraints = copy.deepcopy(self.constraints)
         for variable, constraint_list in local_constraints.items() :
+            print("Now trying to replace stuff in \"%s\"..." % constraint_list)
             for i in range(0, len(constraint_list)) :
                 constraint_list[i] = constraint_list[i].subs(local_parameters)
 
@@ -190,6 +192,7 @@ class ViabilityTheoryProblem :
         point = dict()
 
         # can we find min and max for each state variable from the constraints?
+        # TODO replace this part with self.get_variable_boundaries()
         for state_variable in self.equations :
 
             minimum = np.inf
@@ -222,6 +225,34 @@ class ViabilityTheoryProblem :
             point[state_variable] = random.uniform(minimum, maximum)
 
         return point
+
+    def get_variable_boundaries(self, state_variable) :
+        """
+        Get (min, max) viable values for a variable.
+        """
+        minimum = np.inf
+        maximum = -np.inf
+
+        # go over the list of constraints for that variable
+        for constraint in self.constraints[state_variable] :
+
+            # create a new constraint, replacing the parameters
+            constraint_with_value = constraint.subs(self.parameters)
+
+            # check the type of inequality inside the constraint
+            atoms = constraint_with_value.atoms()
+            value = [ a for a in atoms if isinstance(a, sympy.Number) ][0].evalf() 
+
+            if len([a.func for a in constraint.atoms(sympy.LessThan)]) > 0 :
+                maximum = value
+            elif len([a.func for a in constraint.atoms(sympy.StrictLessThan)]) > 0 :
+                maximum = value - np.finfo(float).eps
+            elif len([a.func for a in constraint.atoms(sympy.GreaterThan)]) > 0 :
+                minimum = value
+            elif len([a.func for a in constraint.atoms(sympy.StrictGreaterThan)]) > 0 :
+                minimum = value + np.finfo(float).eps
+
+        return minimum, maximum
 
     def __str__(self) :
         """

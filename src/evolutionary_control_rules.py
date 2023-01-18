@@ -45,47 +45,73 @@ function2string = {
         }
 
 def equation_string_representation(individual) :
+    """
+    This is the correct version of the function that transforms a gplearn _Program instance to a sympy-processable string. It is important to notice
+    that gplearn internally stores a GP-tree as a flattened list representation, using a stack-based encoding that employs the -arity of the functions
+    to exactly understand where the function arguments are placed in the list. This is why the use of a stack is necessary in decoding the list.
+    """
 
-    # recursive function that is used to visit the tree (flattened as a list)
-    def recursive_visit(individual, current_position) :
-        
-        current_node = individual.program[current_position]
-        individual_string = ""
+    final_string = ""
+    apply_stack = []
 
-        # check the node: if it's a function, check its arity to find the next position
-        if isinstance(current_node, _Function) :
+    # the general idea is that we go over the nodes (flattened as elements of a list) one by one, and we create a 'stack' (another list)
+    # that contains, for each element: a list with first element the node of a function, and as following elements all the COMPUTED ARGUMENTS
+    # of the function. If not all the argument of the function are computed yet (because they are other sub-trees), that part is not added to
+    # the string representation of the equation until later, when all arguments are processed. This creates a stack where progressively all function
+    # nodes are added, one after the other, along with their arguments, and AS SOON AS A FUNCTION HAS ALL ITS COMPUTED ARGUMENTS, that part of the
+    # stack is processed, and the intermediate result is appended to the arguments of the previous element of the stack (e.g. as a computed argument
+    # of the previous function. Eventually, the stack becomes empty.
+    #
+    # Example: sin(log(div(P, L))) ; nodes in the program: [sin, log, div, P, L]
+    # we read 'sin', who has a 'arity' of 1: stack [[sin]]
+    # we read 'log', which is not a terminal, and has a 'arity' of 1: stack [[sin], [log]]
+    # we read 'div', which has a 'arity' of 2: stack [[sin], [log], [div]]
+    # we read 'P', which is a terminal, so it gets added to the list of the previous element in the stack: stack [[sin], [log], [div, P]]
+    # the stack is not processed yet, because the last element does not have enough arguments to be processed (it requires 2, it only has 'P')
+    # we read 'L', which is a terminal: stack [[sin], [log], [div, P, L]]
+    # now the last element in the stack has enough arguments to be processed, so it gets converted to a string and appended as an argument of the previous element
+    # stack: [[sin], [log, "(P/L)"]]
+    # but now the 'new' last element has the 1 argument it needs, so it can be processed again and appended as an argument to the previous
+    # stack: [[sin, "log(P/L"]]
+    # and again, since 'sin' only needs 1 argument; the stack will be empty and the final result will be:
+    # "sin(log(P/L))
+    for node in individual.program :
 
-            # if the function only has one argument
-            if current_node.arity == 1 :
-                #individual_string += function2string.get(current_node, "Error") + "("
-                individual_string += function2string[current_node.name] + "("
-                individual_string += recursive_visit(individual, current_position+1)
-                individual_string += ")"
-
-            elif current_node.arity == 2 :
-                individual_string += "(" + recursive_visit(individual, current_position+1)
-                #individual_string += function2string.get(current_node, "Error")
-                individual_string += function2string[current_node.name]
-                individual_string += recursive_visit(individual, current_position+2) + ")"
-
-        # in this case, the current node is a terminal, and more specifically a variable
-        elif isinstance(current_node, int) :
-
-                if individual.feature_names is None:
-                    individual_string += 'X%s' % current_node
-                else:
-                    individual_string += individual.feature_names[current_node]
-
-        # in this last case, the current node is a terminal, and more specifically a floating point value
+        if isinstance(node, _Function) :
+            apply_stack.append([node])
         else :
-            individual_string += '%.4f' % current_node
+            apply_stack[-1].append(node)
 
-        return individual_string
+        while len(apply_stack[-1]) == apply_stack[-1][0].arity + 1 :
 
-    # string that will contain the representation of the individual
-    individual_string = recursive_visit(individual, 0)
+            function = evolutionary_control_rules.function2string[apply_stack[-1][0].name]
+            terminals = []
+            for t in apply_stack[-1][1:] :
+                if isinstance(t, int) :
+                    terminals.append(individual.feature_names[t])
+                elif isinstance(t, float):
+                    terminals.append("%.4f" % t)
+                elif isinstance(t, str) :
+                    terminals.append(t)
+                else :
+                    print("This is an error!")
 
-    return individual_string
+            # create partial string
+            intermediate_result = ""
+            if apply_stack[-1][0].arity == 2 :
+                intermediate_result = "(" + terminals[0] + function + terminals[1] + ")"
+            else :
+                intermediate_result = function + "(" + terminals[0] + ")"
+
+            if len(apply_stack) != 1 :
+                apply_stack.pop()
+                apply_stack[-1].append(intermediate_result)
+            else :
+                return intermediate_result
+
+    # we should never get here
+    return None
+
 
 def individual2string(candidate) :
     """
@@ -104,9 +130,11 @@ def are_individuals_equal(individual1, individual2) :
     Utility function, to check whether individuals are identical.
     """
 
-    # TODO CHECK THIS, IT'S PROBABLY WRONG
     for variable in individual1 :
-        if sympy.sympify(equation_string_representation(individual1[variable])) != sympy.sympify(equation_string_representation(individual2[variable])) :
+        expr1 = sympy.sympify(equation_string_representation(individual1[variable]))
+        expr2 = sympy.sympify(equation_string_representation(individual2[variable]))
+
+        if not expr2.equals(expr1) :
             return False
 
     return True
@@ -197,67 +225,74 @@ def variator(random, individual1, individual2, args) :
 
     offspring = []
 
-    # the genome of an individual is a dictionary, with one gplearn program for each control variable
-    # this variator should take that into account, and consider that sometimes it's better to just change
-    # one or few of the control rules, to preserve locality; at the moment, there is a probabilty that
-    # nothing happens, but then we have to check that the new individual is actually different from individual1
-    logger.debug("Generating new individual...")
-    new_individual = { variable : None for variable in individual1 }
+    # we are going to loop until the new individual is at least a bit different from individual1
+    is_offspring_equal_to_parent = True
 
-    # TODO loop while the new individual is at least a bit different from individual1
+    while is_offspring_equal_to_parent :
+        # the genome of an individual is a dictionary, with one gplearn program for each control variable
+        # this variator should take that into account, and consider that sometimes it's better to just change
+        # one or few of the control rules, to preserve locality; at the moment, there is a probabilty that
+        # nothing happens, but then we have to check that the new individual is actually different from individual1
+        logger.debug("Generating new individual...")
+        new_individual = { variable : None for variable in individual1 }
 
-    program = None
-    for variable in new_individual :
-        # let's select a probability to apply one of the mutation operators
-        p = random_state.uniform()
-        logger.debug("Creating gplearn program for state variable \"%s\"..." % variable)
+        program = None
+        for variable in new_individual :
+            # let's select a probability to apply one of the mutation operators
+            p = random_state.uniform()
+            logger.debug("Creating gplearn program for state variable \"%s\"..." % variable)
 
-        new_program = None
-        if p < p_crossover :
-            logger.debug("Performing a crossover...")
-            program, removed, remains = individual1[variable].crossover(individual2[variable].program, random_state)
+            new_program = None
+            if p < p_crossover :
+                logger.debug("Performing a crossover...")
+                program, removed, remains = individual1[variable].crossover(individual2[variable].program, random_state)
 
-        elif p < (p_crossover + p_subtree) :
-            logger.debug("Performing a subtree mutation...")
-            program, removed, _ = individual1[variable].subtree_mutation(random_state)
+            elif p < (p_crossover + p_subtree) :
+                logger.debug("Performing a subtree mutation...")
+                program, removed, _ = individual1[variable].subtree_mutation(random_state)
 
-        elif p < (p_crossover + p_subtree + p_hoist) :
-            logger.debug("Performing a hoist mutation...")
-            program, removed = individual1[variable].hoist_mutation(random_state)
+            elif p < (p_crossover + p_subtree + p_hoist) :
+                logger.debug("Performing a hoist mutation...")
+                program, removed = individual1[variable].hoist_mutation(random_state)
 
-        elif p < (p_crossover + p_subtree + p_hoist + p_point) :
-            logger.debug("Performing a point mutation...")
-            program, mutated = individual1[variable].point_mutation(random_state)
+            elif p < (p_crossover + p_subtree + p_hoist + p_point) :
+                logger.debug("Performing a point mutation...")
+                program, mutated = individual1[variable].point_mutation(random_state)
 
+            else :
+                logger.debug("Copying the original genome from individual1...")
+                program = individual1[variable].reproduce() 
+
+            # create new instance of _Program
+            new_program = _Program(function_set=individual1[variable].function_set,
+                       arities=individual1[variable].arities,
+                       init_depth=individual1[variable].init_depth,
+                       init_method=individual1[variable].init_method,
+                       n_features=individual1[variable].n_features,
+                       metric=individual1[variable].metric,
+                       transformer=individual1[variable].transformer,
+                       const_range=individual1[variable].const_range,
+                       p_point_replace=individual1[variable].p_point_replace,
+                       parsimony_coefficient=individual1[variable].parsimony_coefficient,
+                       feature_names=individual1[variable].feature_names,
+                       random_state=random_state,
+                       program=program)
+
+            logger.debug("New program generated: %s" % str(new_program))
+            new_individual[variable] = new_program
+
+        # check if the new individual is identical to individual 1
+        logger.debug("New candidate individual: \"%s\"" % individual2string(new_individual))
+        logger.debug("Parent individual to be compared against: \"%s\"" % individual2string(individual1))
+        
+        is_offspring_equal_to_parent = are_individuals_equal(individual1, new_individual)
+
+        if not is_offspring_equal_to_parent :
+            offspring.append(new_individual)
         else :
-            logger.debug("Copying the original genome from individual1...")
-            program = individual1[variable].reproduce() 
+            logger.debug("The two individuals are exactly identical! I should re-loop and create a new one")
 
-        # create new instance of _Program
-        new_program = _Program(function_set=individual1[variable].function_set,
-                   arities=individual1[variable].arities,
-                   init_depth=individual1[variable].init_depth,
-                   init_method=individual1[variable].init_method,
-                   n_features=individual1[variable].n_features,
-                   metric=individual1[variable].metric,
-                   transformer=individual1[variable].transformer,
-                   const_range=individual1[variable].const_range,
-                   p_point_replace=individual1[variable].p_point_replace,
-                   parsimony_coefficient=individual1[variable].parsimony_coefficient,
-                   feature_names=individual1[variable].feature_names,
-                   random_state=random_state,
-                   program=program)
-
-        logger.debug("New program generated: %s" % str(new_program))
-        new_individual[variable] = new_program
-
-    # check if the new individual is identical to individual 1
-    logger.debug("New candidate individual: \"%s\"" % individual2string(new_individual))
-    logger.debug("Parent individual to be compared against: \"%s\"" % individual2string(individual1))
-    if not are_individuals_equal(individual1, new_individual) :
-        offspring.append(new_individual)
-    else :
-        logger.debug("The two individuals are exactly identical! I should re-loop and create a new one")
+        # end of while: if the new individual is equal to parent individual1, we loop and try again 
 
     return offspring
 

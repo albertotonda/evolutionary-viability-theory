@@ -44,7 +44,7 @@ class ViabilityTheoryProblem :
 
         return
 
-    def run_simulation(self, initial_conditions, time_step, max_time) :
+    def run_simulation(self, initial_conditions, time_step, max_time, saturate_control_function_on_boundaries=False) :
         """
         This part will actually solve the ODE system for a given set of initial conditions. Returns the values for each variable at each instant of time, and also the number and values of constraint violations.
         """

@@ -51,9 +51,6 @@ def equation_string_representation(individual) :
     to exactly understand where the function arguments are placed in the list. This is why the use of a stack is necessary in decoding the list.
     """
 
-    final_string = ""
-    apply_stack = []
-
     # the general idea is that we go over the nodes (flattened as elements of a list) one by one, and we create a 'stack' (another list)
     # that contains, for each element: a list with first element the node of a function, and as following elements all the COMPUTED ARGUMENTS
     # of the function. If not all the argument of the function are computed yet (because they are other sub-trees), that part is not added to
@@ -74,7 +71,20 @@ def equation_string_representation(individual) :
     # but now the 'new' last element has the 1 argument it needs, so it can be processed again and appended as an argument to the previous
     # stack: [[sin, "log(P/L"]]
     # and again, since 'sin' only needs 1 argument; the stack will be empty and the final result will be:
-    # "sin(log(P/L))
+    # "sin(log(P/L))"
+
+    # this is the case for one-node degenerate individuals
+    node = individual.program[0]
+    if isinstance(node, int) :
+        return individual.feature_names[node]
+    elif isinstance(node, float) :
+        return "%.4f" % node
+
+    # if the individual is more than one node, let's go over it!
+    final_string = ""
+    apply_stack = []
+
+    # this is for regular individuals
     for node in individual.program :
 
         if isinstance(node, _Function) :
@@ -84,7 +94,7 @@ def equation_string_representation(individual) :
 
         while len(apply_stack[-1]) == apply_stack[-1][0].arity + 1 :
 
-            function = evolutionary_control_rules.function2string[apply_stack[-1][0].name]
+            function = function2string[apply_stack[-1][0].name]
             terminals = []
             for t in apply_stack[-1][1:] :
                 if isinstance(t, int) :
@@ -332,7 +342,9 @@ def observer(population, num_generations, num_evaluations, args) :
         dictionary_generation["individual"].append(individual2string(individual.candidate))
         dictionary_generation["fitness"].append(individual.fitness)
 
+    # conver the dictionary to a pandas DataFrame, and sort it by descending fitness (easier to read later)
     df = pd.DataFrame.from_dict(dictionary_generation)
+    df.sort_values(by=["fitness"], ascending=False, inplace=True)
     df.to_csv(file_generation, index=False)
 
     return

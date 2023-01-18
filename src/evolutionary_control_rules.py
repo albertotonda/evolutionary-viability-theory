@@ -103,6 +103,8 @@ def are_individuals_equal(individual1, individual2) :
     """
     Utility function, to check whether individuals are identical.
     """
+
+    # TODO CHECK THIS, IT'S PROBABLY WRONG
     for variable in individual1 :
         if sympy.sympify(equation_string_representation(individual1[variable])) != sympy.sympify(equation_string_representation(individual2[variable])) :
             return False
@@ -202,6 +204,8 @@ def variator(random, individual1, individual2, args) :
     logger.debug("Generating new individual...")
     new_individual = { variable : None for variable in individual1 }
 
+    # TODO loop while the new individual is at least a bit different from individual1
+
     program = None
     for variable in new_individual :
         # let's select a probability to apply one of the mutation operators
@@ -248,10 +252,12 @@ def variator(random, individual1, individual2, args) :
         new_individual[variable] = new_program
 
     # check if the new individual is identical to individual 1
-    logger.debug("New candidate individual: \"%s\"" % str(new_individual))
     logger.debug("New candidate individual: \"%s\"" % individual2string(new_individual))
+    logger.debug("Parent individual to be compared against: \"%s\"" % individual2string(individual1))
     if not are_individuals_equal(individual1, new_individual) :
         offspring.append(new_individual)
+    else :
+        logger.debug("The two individuals are exactly identical! I should re-loop and create a new one")
 
     return offspring
 

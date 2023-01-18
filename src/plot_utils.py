@@ -184,7 +184,8 @@ if __name__ == "__main__" :
     vp = ViabilityTheoryProblem(equations=equations, control=control, constraints=constraints, parameters=parameters)
 
     # read a file with a few individuals, find the row with the highest value, get the best individual
-    results_file = "2022-12-22-14-56-38-viability-theory/generation-29.csv"
+    #results_file = "2022-12-22-14-56-38-viability-theory/generation-29.csv"
+    results_file = "2022-12-22-14-12-39-viability-theory/generation-0.csv"
     print("Reading file \"%s\" and finding best individual..." % results_file)
 
     df = pd.read_csv(results_file)

@@ -100,7 +100,7 @@ def equation_string_representation(individual) :
                 if isinstance(t, int) :
                     terminals.append(individual.feature_names[t])
                 elif isinstance(t, float):
-                    terminals.append("%.4f" % t)
+                    terminals.append("(%.4f)" % t)
                 elif isinstance(t, str) :
                     terminals.append(t)
                 else :
@@ -135,6 +135,19 @@ def individual2string(candidate) :
 
     return individual_string[:-2] # remove the last ', '
 
+def individual_to_gplearn_string(candidate) :
+
+    """
+    Utility function to convert an individual's genotype to a string, using gplearn's formalism. Individuals here are dictionaries of gplearn programs.
+    """
+    individual_string = ""
+
+    for variable, program in candidate.items() :
+        individual_string += "\'" + str(variable) + "\' : \'"
+        individual_string += str(program) + "\', "
+
+    return individual_string[:-2] # remove the last ', '
+
 def are_individuals_equal(individual1, individual2) :
     """
     Utility function, to check whether individuals are identical.
@@ -144,7 +157,19 @@ def are_individuals_equal(individual1, individual2) :
         expr1 = sympy.sympify(equation_string_representation(individual1[variable]))
         expr2 = sympy.sympify(equation_string_representation(individual2[variable]))
 
-        if not expr2.equals(expr1) :
+        # this would be the best way of doing this comparison, comparing directly the symbolic
+        # representations; however, for complex individuals, it can take HOURS of computation
+        #if not expr2.equals(expr1) :
+        #    return False
+
+        # so, we settle for the second-best option: compare the string representations
+        # sympy apparently always orders symbolic elements in the same way, even if they
+        # are presented in a different order (e.g. "L + P" and "P + L", converted to symbolic
+        # and then back to string, would both be "L + P")
+        string1 = str(expr1)
+        string2 = str(expr2)
+
+        if string2 != string1 :
             return False
 
     return True
@@ -330,6 +355,7 @@ def observer(population, num_generations, num_evaluations, args) :
     dictionary_generation = {
             "generation" : [],
             "individual" : [],
+            "individual_gplearn" : [],
             "fitness" : []
             }
 
@@ -340,6 +366,7 @@ def observer(population, num_generations, num_evaluations, args) :
 
     for individual in population :
         dictionary_generation["individual"].append(individual2string(individual.candidate))
+        dictionary_generation["individual_gplearn"].append(individual_to_gplearn_string(individual.candidate))
         dictionary_generation["fitness"].append(individual.fitness)
 
     # conver the dictionary to a pandas DataFrame, and sort it by descending fitness (easier to read later)

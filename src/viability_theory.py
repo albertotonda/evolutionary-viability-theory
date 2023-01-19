@@ -63,11 +63,11 @@ class ViabilityTheoryProblem :
             local_equations[state_variable] = local_equations[state_variable].subs(local_parameters) 
 
         #print(local_equations)
-        print(local_parameters)
+        #print(local_parameters) # TODO move 'print' to logger ?
 
         local_constraints = copy.deepcopy(self.constraints)
         for variable, constraint_list in local_constraints.items() :
-            print("Now trying to replace stuff in \"%s\"..." % constraint_list)
+            #print("Now trying to replace stuff in \"%s\"..." % constraint_list) # TODO move 'print' to logger ?
             for i in range(0, len(constraint_list)) :
                 constraint_list[i] = constraint_list[i].subs(local_parameters)
 

@@ -228,6 +228,7 @@ def fitness_function(individual, args) :
 
     # and now, we run a simulation for each initial condition
     for ic in initial_conditions :
+        logger.debug("Now running simulation for initial conditions %s..." % str(ic))
         # there might be some crash here, so 
         try :
             output_values, constraint_violations = vp.run_simulation(ic, time_step, max_time) 

@@ -2,6 +2,7 @@
 Set of scripts for managing viability theory problems. It's going to use symbolic computation.
 """
 import copy
+import logging # it could be useful to send messages to other processes
 import numpy as np
 import sympy
 
@@ -112,6 +113,7 @@ class ViabilityTheoryProblem :
         constraint_violations = [] # when, what, by how much
 
         # start the loop, integrating for each time step and checking if the constraints are respected
+        logging.debug("Starting integration...")
         index = 1
         all_constraints_satisfied = True
         while r.successful() and r.t < max_time and all_constraints_satisfied :
@@ -121,7 +123,7 @@ class ViabilityTheoryProblem :
             Y.append(r.y)
             time.append(r.t)
 
-            #print("Time=%2.f, Values=%s" % (r.t, str(r.y)))
+            logging.debug("\tTime=%2.f, Values=%s" % (r.t, str(r.y)))
 
             # go from the values to the symbols
             current_values = { variable : r.y[i] for i, variable in enumerate(symbols) }
@@ -170,7 +172,7 @@ class ViabilityTheoryProblem :
                         # and it's going to be in absolute value
                         amount_of_violation = abs(amount_of_violation)
 
-                        #print("Constraint \"%s\" was not satisfied!" % str(constraint_equation))
+                        logging.debug("Constraint \"%s\" was not satisfied!" % str(constraint_equation))
                         constraint_violations.append({  "time" : r.t, 
                                                         "state_variables_values" : current_values, 
                                                         "constraint_violated" : str(local_constraints[variable][index_constraint]),

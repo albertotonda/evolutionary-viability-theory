@@ -85,7 +85,7 @@ def plot_vp_trajectories(vp, initial_conditions, time_step=0.1, max_time=100, co
     trajectories = []
     constraint_violations = []
     for ic in initial_conditions :
-        trajectory, constraint_violation = vp.run_simulation(ic, time_step, max_time)
+        trajectory, constraint_violation = vp.run_simulation(ic, time_step, max_time, saturate_control_function_on_boundaries=True)
         trajectories.append( trajectory )
         constraint_violations.append( constraint_violation )
 
@@ -184,8 +184,8 @@ if __name__ == "__main__" :
     vp = ViabilityTheoryProblem(equations=equations, control=control, constraints=constraints, parameters=parameters)
 
     # read a file with a few individuals, find the row with the highest value, get the best individual
-    #results_file = "2022-12-22-14-56-38-viability-theory/generation-29.csv"
-    results_file = "2022-12-22-14-12-39-viability-theory/generation-0.csv"
+    results_file = "2022-12-22-14-56-38-viability-theory/generation-29.csv"
+    #results_file = "2022-12-22-14-12-39-viability-theory/generation-0.csv"
     print("Reading file \"%s\" and finding best individual..." % results_file)
 
     df = pd.read_csv(results_file)

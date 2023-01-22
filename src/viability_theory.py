@@ -45,10 +45,50 @@ class ViabilityTheoryProblem :
 
         return
 
+    def saturate_control_rules(self, control_rules, state_variables_values, control_rules_constraints) :
+        """
+        Function that saturates the control rules, so that they can never escape the constraints. If a control
+        rule exceeds its constraints, it is fixed at the constraint value. It returns a dictionary of values
+        for the symbols corresponding to control variables.
+        """
+        control_variables_values = dict()
+
+        # "state_variables_values" could be a dictionary like {string -> value}, let's change it to {symbol -> value}
+        state_variables_values_symbols = { sympy.sympify(state_variable) : value for state_variable, value in state_variables_values.items() }
+
+        for control_variable, control_rule in control_rules.items() :
+            # compute a single value of the control rule, by just replacing the state variable symbols with their values
+            control_variables_values[sympy.sympify(control_variable)] = control_rule.evalf(subs=state_variables_values)
+
+        # we are making a wide hypothesis here, that constraints could include other control rules or state variables
+        # we go over the constraints, and replace the value of everything until the constraint is either satisfied or
+        # not satisfied; if it is not satisfied, we set the value of the control rule to the value of the constraint
+        # (plus or minus an epsilon, if it is less than)
+        for control_variable, constraint_list in control_rules_constraints.items() :
+            for index_constraint in range(0, len(constraint_list)) :
+
+                constraint_equation = control_rules_constraints[control_variable][index_constraint]
+
+                # replace the symbols inside the constraint with the current values of the state variables and
+                # the current values of the control variables, and check if the expression is False
+                constraint_value = constraint_equation.subs(state_variables_values)
+                constraint_value = constraint_equation.subs(control_variables_values)
+
+                if isinstance(constraint_value, sympy.logic.boolalg.BooleanFalse) :
+                    # the constraint has not been satisfied! replace the value of the control variable with the constraint value
+                    # if the inequality includes "LessThan" (<=) or "GreaterThen" (>=), we can just set the control variable to
+                    # the value in the right hand side; otherwise, we need to add or remove an epsilon, because we are dealing
+                    # with a strict inequality (< or >)
+                    control_variable_value = float(constraint_equation.rhs) # NOTE I am not sure this would work with complex constraints
+                    control_variables_values[sympy.sympify(control_variable)] = control_variable_value 
+
+        return control_variables_values
+
     def run_simulation(self, initial_conditions, time_step, max_time, saturate_control_function_on_boundaries=False) :
         """
         This part will actually solve the ODE system for a given set of initial conditions. Returns the values for each variable at each instant of time, and also the number and values of constraint violations.
         """
+        # TODO to obtain some proper logging here, we should get the list of all loggers and use one
         # define some utility symbols
         inequality_symbols = [sympy.LessThan, sympy.GreaterThan, sympy.StrictLessThan, sympy.StrictGreaterThan]
         replace_inequalities_dictionary = { s : sympy.Add for s in inequality_symbols }
@@ -56,9 +96,13 @@ class ViabilityTheoryProblem :
         # preliminary steps: replace all parameters in the equations for which we have values
         local_equations = { sympy.sympify(variable) : equation for variable, equation in self.equations.items() }
         local_parameters = { sympy.sympify(parameter) : value for parameter, value in self.parameters.items() }
-        # include the control law inside the "parameters"
-        for variable, control_equation in self.control.items() :
-            local_parameters[sympy.sympify(variable)] = sympy.sympify(control_equation)
+
+        # if we ARE NOT saturating the control rules, include the control rules inside the "parameters",
+        # so that the full equation will just replace the control rule with a function of state variables;
+        # if we ARE saturating the control rules, we will treat the case separately during integration
+        if not saturate_control_function_on_boundaries :
+            for variable, control_equation in self.control.items() :
+                local_parameters[sympy.sympify(variable)] = sympy.sympify(control_equation)
 
         for state_variable in local_equations :
             local_equations[state_variable] = local_equations[state_variable].subs(local_parameters) 
@@ -66,13 +110,27 @@ class ViabilityTheoryProblem :
         #print(local_equations)
         #print(local_parameters) # TODO move 'print' to logger ?
 
-        local_constraints = copy.deepcopy(self.constraints)
-        for variable, constraint_list in local_constraints.items() :
-            #print("Now trying to replace stuff in \"%s\"..." % constraint_list) # TODO move 'print' to logger ?
-            for i in range(0, len(constraint_list)) :
-                constraint_list[i] = constraint_list[i].subs(local_parameters)
+        # we will later need to make a special case if we decide to saturate the control rules on their boundaries,
+        # so, for starters, we will separate the constraints between constraints for the state variables and
+        # constraints for the control rules; constraints for the control rules will later be used to saturate
+        state_variables_constraints = dict()
+        control_rules_constraints = dict()
 
-        #print(local_constraints)
+        for variable, constraint_list in self.constraints.items() :
+            # get a copy of the list of constraints, then replace the (possible) parameters with their values
+            local_constraint_list = copy.deepcopy(constraint_list)
+            for i in range(0, len(local_constraint_list)) :
+                local_constraint_list[i] = constraint_list[i].subs(local_parameters)
+
+            # depending on whether the variable is a control rule or a state variable, add list of constraints
+            # to the corresponding dictionary
+            if variable in self.equations :
+                state_variables_constraints[variable] = local_constraint_list
+            elif variable in self.control :
+                control_rules_constraints[variable] = local_constraint_list
+
+        print("Constraints on state variables:", state_variables_constraints)
+        print("Constraints on control rules:", control_rules_constraints)
 
         # we define an internal "dX/dt" function that will be used by scipy to solve the system
         # TODO it could be better to put this at the same level at the other class methods, but
@@ -93,22 +151,30 @@ class ViabilityTheoryProblem :
             return values
 
         # setup; Y is the current state of all state variables; they appear in the order specified by self.equations
-        # in the latest version of Python, dictionaries are guaranteed to always return keys in the same order
+        # in the latest version of Python, dictionaries are guaranteed to always return keys in the same order they
+        # have been added in, so there is no need to sort alphabetically or something like that
         Y = []
         time = []
 
         Y.append( [initial_conditions[state_variable] for state_variable in self.equations] )
         time.append(0)
 
+        # now, here comes a big modification: if we are saturating the control rules, we first need to compute
+        # the values of the control rules, and then replace the corresponding symbols in the local equations
+        local_equations_integration = local_equations
+        if saturate_control_function_on_boundaries == True :
+            control_variables_values = self.saturate_control_rules(self.control, initial_conditions, control_rules_constraints)
+            local_equations_integration = { state_variable : equation.subs(control_variables_values) for state_variable, equation in local_equations_integration.items() }
+
         # we set up the integrator; we also need to prepare the variables that will be used by dX_dt
-        symbols = [ state_variable for state_variable in local_equations ]
+        symbols = [ state_variable for state_variable in local_equations_integration ]
         r = integrate.ode(dX_dt)
-        r.set_f_params([local_equations, symbols])
+        r.set_f_params([local_equations_integration, symbols])
         r.set_integrator('dopri5')
         r.set_initial_value(Y[0], time[0])
 
         # prepare the output variables
-        output_values = { str(variable) : [] for variable in local_equations }
+        output_values = { str(variable) : [] for variable in local_equations_integration }
         output_values["time"] = []
         constraint_violations = [] # when, what, by how much
 
@@ -132,24 +198,22 @@ class ViabilityTheoryProblem :
             for variable in current_values :
                 output_values[str(variable)].append( current_values[variable] )
 
-            # add checks on constraints
+            # add checks on constraints; depending on whether we are saturating the control rules, we need
+            # to define a special dictionary of constraints
+            local_constraints = state_variables_constraints
+            if not saturate_control_function_on_boundaries :
+                local_constraints = {**state_variables_constraints, **control_rules_constraints}
+
             for variable, constraint_list in local_constraints.items() :
 
                 for index_constraint in range(0, len(constraint_list)) :
 
                     constraint_equation = local_constraints[variable][index_constraint]
-                    
-                    #print(constraint_equation)
-                    #print(constraint_equation.subs(current_values))
 
                     # evaluate the constraint, replacing the values of the symbols; however,
                     # we also have to take into account that the constraint could have already been
                     # reduced to a single value (True or False)
                     constraint_satisfied = True
-
-                    #print("Check if it is Boolean:", isinstance(constraint_equation, sympy.logic.boolalg.Boolean))
-                    #print("Check if it is BooleanFalse:", isinstance(constraint_equation, sympy.logic.boolalg.BooleanFalse))
-                    #print("Check if it is BooleanTrue:", isinstance(constraint_equation, sympy.logic.boolalg.BooleanTrue))
 
                     if not isinstance(constraint_equation, sympy.logic.boolalg.BooleanTrue) :
                         constraint_equation = constraint_equation.subs(current_values) # there is no need for .evalf() here, it should be reduced to True/False
@@ -179,6 +243,13 @@ class ViabilityTheoryProblem :
                                                         "amount_of_violation" : amount_of_violation,
                                                         })
                         all_constraints_satisfied = False
+
+            # at the end of the constraint check, before looping, we recompute the values of the control rules
+            # (but only if we are saturating on the boundaries of the constraints for the control rules)
+            if saturate_control_function_on_boundaries == True :
+                control_variables_values = self.saturate_control_rules(self.control, current_values, control_rules_constraints)
+                local_equations_integration = { state_variable : equation.subs(control_variables_values) for state_variable, equation in local_equations_integration.items() }
+                r.set_f_params([local_equations_integration, symbols])
 
             index += 1
 

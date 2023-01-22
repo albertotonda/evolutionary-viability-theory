@@ -87,6 +87,33 @@ class ViabilityTheoryProblem :
         return control_variables_values
 
 
+    def create_saturated_control_rules(self, control_rules, constraints) : 
+        """
+        Creates a "saturated" (min-maxed) version of each control rule.
+        """
+        saturated_control_rules = dict()
+
+        for control_variable, control_rule in control_rules.items() :
+            control_rule_string = str(control_rule)
+
+            for constraint in constraints[control_variable] :
+                
+                # check the type of inequality; we turn the "strict" > and < into >= and <=, adding or subtracting a machine epsilon
+                if isinstance(constraint, sympy.LessThan) :
+                    control_rule_string = "Max(" + control_rule_string + ", " + str(constraint.rhs) + ")"
+                elif isinstance(constraint, sympy.StrictLessThan) :
+                    control_rule_string = "Max(" + control_rule_string + ", " + str(sympy.Add(constraint.rhs, sympy.sympify(np.finfo(float).eps))) + ")"
+                elif isinstance(constraint, sympy.MoreThan) :
+                    control_rule_string = "Min(" + control_rule_string + ", " + str(constraint.rhs) + ")"
+                elif isinstance(constraint, sympy.StrictMoreThan) :
+                    control_rule_string = "Min(" + control_rule_string + ", " + str(sympy.Add(constraint.rhs, sympy.sympify(-np.finfo(float).eps))) + ")"
+
+            # after analyzing all constraints, here is the new (saturated) control rule
+            saturated_control_rules[control_variable] = sympy.sympify(control_rule_string)
+
+        return saturated_control_rules
+
+
     def run_simulation(self, initial_conditions, time_step, max_time, saturate_control_function_on_boundaries=False) :
         """
         This part will actually solve the ODE system for a given set of initial conditions. Returns the values for each variable at each instant of time, and also the number and values of constraint violations.
@@ -170,6 +197,8 @@ class ViabilityTheoryProblem :
         if saturate_control_function_on_boundaries == True :
             control_variables_values = self.saturate_control_rules(self.control, initial_conditions, control_rules_constraints)
             local_equations_integration = { state_variable : equation.subs(control_variables_values) for state_variable, equation in local_equations_integration.items() }
+            # the dictionary is like {symbol -> value}, but for the following we need {string -> value}
+            control_variables_values = { str(variable) : value for variable, value in control_variables_values.items() }
         else :
             for control_variable, control_equation in self.control.items() :
                 control_variable_value = control_equation.subs(local_parameters)
@@ -186,7 +215,7 @@ class ViabilityTheoryProblem :
         # prepare the output variables
         output_values = { str(variable) : [] for variable in local_equations_integration }
         for variable in self.control :
-            output_values[variable] = []
+            output_values[str(variable)] = []
         output_values["time"] = []
         constraint_violations = [] # when, what, by how much
 
@@ -202,6 +231,12 @@ class ViabilityTheoryProblem :
         index = 1
         all_constraints_satisfied = True
         while r.successful() and r.t < max_time and all_constraints_satisfied :
+
+            # debugging
+            string_debug = "Step %d:" % index
+            for variable in output_values :
+                string_debug += " %s (%d values);" % (variable, len(output_values[variable]))
+            print(string_debug)
 
             # get the next point in the solution of the ODE system
             r.integrate(r.t + time_step, step=True)
@@ -220,7 +255,7 @@ class ViabilityTheoryProblem :
             # do the same for the control rules
             for variable, control_equation in self.control.items() :
                 control_equation_value = control_equation.subs(local_parameters)
-                control_equation_value = control_equation.subs(current_values)
+                control_equation_value = control_equation_value.subs(current_values)
                 output_values[str(variable)].append( control_equation_value )
 
             # add checks on constraints; depending on whether we are saturating the control rules, we need

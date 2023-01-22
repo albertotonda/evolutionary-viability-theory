@@ -86,8 +86,8 @@ def plot_vp_trajectories(vp, initial_conditions, time_step=0.1, max_time=100, co
     constraint_violations = []
     for index, ic in enumerate(initial_conditions) :
         print("Running simulation for initial conditions %s" % str(ic))
-        #trajectory, constraint_violation = vp.run_simulation(ic, time_step, max_time, saturate_control_function_on_boundaries=True)
-        trajectory, constraint_violation = vp.run_simulation(ic, time_step, max_time)
+        trajectory, constraint_violation = vp.run_simulation(ic, time_step, max_time, saturate_control_function_on_boundaries=True)
+        #trajectory, constraint_violation = vp.run_simulation(ic, time_step, max_time)
         trajectories.append( trajectory )
         constraint_violations.append( constraint_violation )
 

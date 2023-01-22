@@ -84,10 +84,20 @@ def plot_vp_trajectories(vp, initial_conditions, time_step=0.1, max_time=100, co
     print("Solving differential equations for the initial conditions...")
     trajectories = []
     constraint_violations = []
-    for ic in initial_conditions :
-        trajectory, constraint_violation = vp.run_simulation(ic, time_step, max_time, saturate_control_function_on_boundaries=True)
+    for index, ic in enumerate(initial_conditions) :
+        print("Running simulation for initial conditions %s" % str(ic))
+        #trajectory, constraint_violation = vp.run_simulation(ic, time_step, max_time, saturate_control_function_on_boundaries=True)
+        trajectory, constraint_violation = vp.run_simulation(ic, time_step, max_time)
         trajectories.append( trajectory )
         constraint_violations.append( constraint_violation )
+
+        # also save the dictionaries for the trajectories
+        import pandas as pd
+        # debugging
+        for v, t in trajectory.items() :
+            print("Variable \"%s\": %d entries" % (v, len(t)))
+        df = pd.DataFrame.from_dict(trajectory)
+        df.to_csv("ic-%d.csv" % index, index=False)
 
     # then, we go subplot by subplot, depending on the variable pairs; the pairs will be plot as 'x' or 'y' in order of appearance 
     for index, variable_pair in enumerate(variable_pairs) :

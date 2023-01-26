@@ -22,16 +22,16 @@ from viability_theory import ViabilityTheoryProblem
 from threading import Thread, Lock
 
 # this is a map used to convert from gplearn representation to string
-function2string = {
-        add2 : "+",
-        sub2 : "-",
-        mul2 : "*",
-        div2 : "/",
-        sqrt1 : "sqrt",
-        log1 : "log",
-        sin1 : "sin",
-        cos1 : "cos",
-        }
+#function2string = {
+#        add2 : "+",
+#        sub2 : "-",
+#        mul2 : "*",
+#        div2 : "/",
+#        sqrt1 : "sqrt",
+#        log1 : "log",
+#        sin1 : "sin",
+#        cos1 : "cos",
+#        }
 
 function2string = {
         "add" : "+",
@@ -429,11 +429,12 @@ def evaluate_individual(individual, args, index, fitness_list, thread_lock, thre
     logger = args["logger"]
 
     logger.debug("[Thread %d] Starting evaluation..." % thread_id)
+    fitness_value = fitness_function(individual, args) 
 
     # thread_lock is a threading.Lock object used for synchronization and avoiding
     # writing on the same resource from multiple threads at the same time
     thread_lock.acquire()
-    fitness_list[index] = fitness_function(individual, args) # TODO put your evaluation function here, also maybe add logger and thread_id 
+    fitness_list[index] = fitness_value 
     thread_lock.release()
 
     logger.debug("[Thread %d] Evaluation finished." % thread_id)
@@ -528,6 +529,8 @@ def evolve_rules(viability_problem, random_seed) :
                             p_hoist = 0.1,
                             p_subtree = 0.1,
                             p_point = 0.1,
+                            # this is a flag that will be used for rescaling the fitness
+                            rescale_fitness = True,
                             )
 
     return
@@ -551,7 +554,8 @@ if __name__ == "__main__" :
             "m" : 1.0,
             "umin" : -0.09,
             "umax" : 0.09,
-            "Lmin" : 0.01, # TODO in fact, it's 0.1
+            #"Lmin" : 0.01, # TODO in fact, it's 0.1
+            "Lmin" : 0.1,
             "Lmax" : 1.0,
             "Pmax" : 1.4,
             }

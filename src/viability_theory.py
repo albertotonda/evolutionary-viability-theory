@@ -167,8 +167,8 @@ class ViabilityTheoryProblem :
             elif variable in self.control and not saturate_control_function_on_boundaries : # we update the control constraints only in the case we do not saturate
                 control_rules_constraints[variable] = local_constraint_list
 
-        print("Constraints on state variables:", state_variables_constraints)
-        print("Constraints on control rules:", control_rules_constraints)
+        logging.debug("Constraints on state variables:", state_variables_constraints)
+        logging.debug("Constraints on control rules:", control_rules_constraints)
 
         # we define an internal "dX/dt" function that will be used by scipy to solve the system
         # TODO it could be better to put this at the same level at the other class methods, but

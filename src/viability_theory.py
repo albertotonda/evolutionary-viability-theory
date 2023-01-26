@@ -111,7 +111,7 @@ class ViabilityTheoryProblem :
 
             # after analyzing all constraints, here is the new (saturated) control rule
             saturated_control_rules[s_control_variable] = sympy.sympify(control_rule_string)
-            print("Saturated control rule:", control_rule_string)
+            #print("Saturated control rule:", control_rule_string)
 
         return saturated_control_rules
 
@@ -225,10 +225,10 @@ class ViabilityTheoryProblem :
         while r.successful() and r.t < max_time and all_constraints_satisfied :
 
             # debugging
-            string_debug = "Step %d:" % index
-            for variable in output_values :
-                string_debug += " %s (%d values);" % (variable, len(output_values[variable]))
-            print(string_debug)
+            #string_debug = "Step %d:" % index
+            #for variable in output_values :
+            #    string_debug += " %s (%d values);" % (variable, len(output_values[variable]))
+            #print(string_debug)
 
             # get the next point in the solution of the ODE system
             r.integrate(r.t + time_step, step=True)

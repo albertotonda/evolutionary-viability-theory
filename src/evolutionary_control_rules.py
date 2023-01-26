@@ -231,7 +231,7 @@ def fitness_function(individual, args) :
         logger.debug("Now running simulation for initial conditions %s..." % str(ic))
         # there might be some crash here, so 
         try :
-            output_values, constraint_violations = vp.run_simulation(ic, time_step, max_time) 
+            output_values, constraint_violations = vp.run_simulation(ic, time_step, max_time, saturate_control_function_on_boundaries=True) 
 
             # compute the fitness, based on how long the simulation ran before a constraint violation
             fitness += len(output_values[state_variables[1]]) / (max_time/time_step)
@@ -551,7 +551,7 @@ if __name__ == "__main__" :
             "m" : 1.0,
             "umin" : -0.09,
             "umax" : 0.09,
-            "Lmin" : 0.01,
+            "Lmin" : 0.01, # TODO in fact, it's 0.1
             "Lmax" : 1.0,
             "Pmax" : 1.4,
             }

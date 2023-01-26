@@ -19,7 +19,7 @@ def draw_arrow(ax, arr_start, arr_end, color='red'):
 
     return
 
-def plot_vp_trajectories(vp, initial_conditions, time_step=0.1, max_time=100, color=None, label=None, fig=None) :
+def plot_vp_trajectories(vp, initial_conditions, time_step=0.1, max_time=100, color=None, label=None, fig=None, label_constraint_violations=True) :
     """
     Function that plots trajectories or just add trajectories to an existing figures, with a certain color or caption
     """
@@ -48,7 +48,7 @@ def plot_vp_trajectories(vp, initial_conditions, time_step=0.1, max_time=100, co
         number_of_rows = math.ceil(number_of_subplots / max_columns)
         number_of_columns = min(number_of_subplots, max_columns)
 
-        fig, axs = plt.subplots(nrows=number_of_rows, ncols=number_of_columns)
+        fig, axs = plt.subplots(nrows=number_of_rows, ncols=number_of_columns, figsize=(10, 8))
 
         # unfortunately, matplotlib decided that's it's a great idea to return one single ax
         # if there is only one, and a list if there is more than one; so we need to check
@@ -67,7 +67,7 @@ def plot_vp_trajectories(vp, initial_conditions, time_step=0.1, max_time=100, co
             y_min, y_max = vp.get_variable_boundaries(var_y)
 
             # TODO check that no value is infinite, here...
-            ax.add_patch(Rectangle((x_min, y_min), x_max - x_min, y_max - y_min, 
+            handle_viable_area = ax.add_patch(Rectangle((x_min, y_min), x_max - x_min, y_max - y_min, 
                 edgecolor='green', linestyle='--', facecolor='none', fill=False, label="Viable area")) 
 
     else :
@@ -106,8 +106,10 @@ def plot_vp_trajectories(vp, initial_conditions, time_step=0.1, max_time=100, co
 
         ax = axs[index]
 
-        # TODO if no color was specified, create a cool colormap here
-        # TODO let's try to make something different, when trajectories with a constraint violation are in red, the others are in green
+        # let's try to make something different, when trajectories with a constraint violation are in red, the others are in green
+        # however, we will need a custom legend with an explicit list of handles; for several reasons, we are going to use a dictionary first
+        # and conver it to a list later on
+        legend_handles_dict = dict()
 
         # transform the list of initial conditions in two arrays, one for variable x and one for variable y
         ic_plot_x = []
@@ -127,24 +129,33 @@ def plot_vp_trajectories(vp, initial_conditions, time_step=0.1, max_time=100, co
             x = trajectory[var_x]
             y = trajectory[var_y]
 
-            trajectory_label = None
-            ic_label = None
-            if index == 0 :
-                trajectory_label = label
-                ic_label = "Initial conditions"
+            trajectory_label = "Viable trajectory"
+            ic_label = "Viable initial conditions"
 
             # let's find the color
             trajectory_color = 'green'
+            trajectory_linestyle = '-'
             if len(constraint_violations[index]) > 0 :
                 trajectory_color = 'red'
+                trajectory_linestyle = '--'
+                ic_label = "Not viable initial conditions"
+                trajectory_label = "Not viable trajectory"
             
             # this marks the initial condition
-            ax.scatter(x_ic, y_ic, marker='x', color=trajectory_color, label=ic_label)
+            handle_ic = ax.scatter(x_ic, y_ic, marker='x', color=trajectory_color, label=ic_label)
             # this draws the trajectory
-            ax.plot(x, y, color=trajectory_color, label=trajectory_label) 
+            handle_trajectory = ax.plot(x, y, color=trajectory_color, linestyle=trajectory_linestyle, label=trajectory_label) 
+
+            # save handles in the dictionary
+            if len(constraint_violations[index]) > 0 :
+                legend_handles_dict["not_viable_ic"] = handle_ic
+                legend_handles_dict["not_viable_trajectory"] = handle_trajectory[0] # for some reason pyplot.plot returns a list of handles
+            else :
+                legend_handles_dict["viable_ic"] = handle_ic
+                legend_handles_dict["viable_trajectory"] = handle_trajectory[0]
 
             # now, if the trajectory at a certain point became non-viable, I want to annotate why
-            if trajectory_color == 'red' :
+            if trajectory_color == 'red' and label_constraint_violations == True :
                 #print(constraint_violations[index])
                 text = str(constraint_violations[index][0]['constraint_violated'])
                 t = ax.text(x_ic + 0.02, y_ic + 0.03, text, fontsize=6)
@@ -154,10 +165,11 @@ def plot_vp_trajectories(vp, initial_conditions, time_step=0.1, max_time=100, co
             #ax.arrow(x[-1], y[-1], 0.01, 0.01, length_includes_head=True, head_width=.05, color=color)
             #draw_arrow(ax, (x[0], y[0]), (x[-1], y[-1]), color=color)
 
-        ax.set_title("Plot for %s, %s" % (var_x, var_y))
+        ax.set_title("Plot for %s, %s (Control rule: %s)" % (var_x, var_y, str(vp.control)))
         ax.set_xlabel(var_x)
         ax.set_ylabel(var_y)
-        ax.legend(loc='best')
+        print(legend_handles_dict)
+        ax.legend(loc='best', handles=[handle_viable_area] + [v for k, v in legend_handles_dict.items()])
 
     return fig
 
@@ -225,7 +237,7 @@ if __name__ == "__main__" :
     time_step = 0.1
     max_time = 100
 
-    fig = plot_vp_trajectories(vp, initial_conditions, time_step=time_step, max_time=max_time, color='red', label='Trajectories')
+    fig = plot_vp_trajectories(vp, initial_conditions, time_step=time_step, max_time=max_time, color='red', label='Trajectories', label_constraint_violations=False)
     plt.savefig("figure-initial-conditions-training.png", dpi=300)
 
     sys.exit(0)

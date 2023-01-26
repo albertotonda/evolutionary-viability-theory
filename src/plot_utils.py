@@ -138,8 +138,8 @@ def plot_vp_trajectories(vp, initial_conditions, time_step=0.1, max_time=100, co
             if len(constraint_violations[index]) > 0 :
                 trajectory_color = 'red'
                 trajectory_linestyle = '--'
-                ic_label = "Not viable initial conditions"
-                trajectory_label = "Not viable trajectory"
+                ic_label = "Non-viable initial conditions"
+                trajectory_label = "Non-viable trajectory"
             
             # this marks the initial condition
             handle_ic = ax.scatter(x_ic, y_ic, marker='x', color=trajectory_color, label=ic_label)
@@ -206,8 +206,8 @@ if __name__ == "__main__" :
     vp = ViabilityTheoryProblem(equations=equations, control=control, constraints=constraints, parameters=parameters)
 
     # read a file with a few individuals, find the row with the highest value, get the best individual
-    results_file = "2022-12-22-14-56-38-viability-theory/generation-29.csv"
-    #results_file = "2022-12-22-14-12-39-viability-theory/generation-0.csv"
+    #results_file = "2022-12-22-14-56-38-viability-theory/generation-29.csv"
+    results_file = "2022-12-22-14-12-39-viability-theory/generation-36.csv"
     print("Reading file \"%s\" and finding best individual..." % results_file)
 
     df = pd.read_csv(results_file)

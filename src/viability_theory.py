@@ -120,6 +120,7 @@ class ViabilityTheoryProblem :
         """
         This part will actually solve the ODE system for a given set of initial conditions. Returns the values for each variable at each instant of time, and also the number and values of constraint violations.
         """
+
         # TODO to obtain some proper logging here, we should get the list of all loggers and use one
         # define some utility symbols
         inequality_symbols = [sympy.LessThan, sympy.GreaterThan, sympy.StrictLessThan, sympy.StrictGreaterThan]
@@ -231,7 +232,12 @@ class ViabilityTheoryProblem :
             #print(string_debug)
 
             # get the next point in the solution of the ODE system
-            r.integrate(r.t + time_step, step=True)
+            try :
+                r.integrate(r.t + time_step, step=True)
+
+            except Exception as e :
+                raise e
+
             Y.append(r.y)
             time.append(r.t)
 
@@ -301,6 +307,7 @@ class ViabilityTheoryProblem :
         # return a dictionary of lists for all state variables and time
         # also, return the dictionary of constraint violations
         output_values["time"] = time
+
         return output_values, constraint_violations
 
     def get_random_viable_point(self, random) :

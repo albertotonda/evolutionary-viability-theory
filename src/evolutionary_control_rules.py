@@ -11,6 +11,24 @@ import random
 import sympy
 import sys
 
+# all this stuff below is to prevent scipy.ode.odeint from writing to stderr in a thread-unsafe way
+# now, this part seems weird, but it's actually done to prevent one of the functions that scipy.ode uses
+# (that is written and compiled in C) from writing to stderr. The issue is that writing to stderr is not thread-safe, so if we
+# use a multi-threaded approach, multiple threads writing to stderr at the same time will create a segmentation fault
+import contextlib
+import io
+import sys
+
+@contextlib.contextmanager
+def no_stderr_stdout() :
+    save_stdout = sys.stdout
+    save_stderr = sys.stderr
+    sys.stdout = io.BytesIO()
+    sys.stderr = io.BytesIO()
+    yield
+    sys.stdout = save_stdout
+    sys.stderr = save_stderr
+
 # steal parts from gplearn: _Program is the basically an individual class, the others are functions
 from gplearn._program import _Program
 from gplearn.functions import _Function, _function_map, add2, sub2, mul2, div2, sqrt1, log1, sin1, cos1 
@@ -209,7 +227,7 @@ def fitness_function(individual, args) :
     # evaluating one solution takes a considerable amount of time, so we will first make a check;
     # if all control rules defined in the individual reduce to a constant, we can discard it 
     control_rules = { variable : equation_string_representation(control_rule) for variable, control_rule in individual.items() }
-    logger.debug("Now evaluating individual corresponding to \"%s\"..." % control_rules)
+    #logger.debug("Now evaluating individual corresponding to \"%s\"..." % control_rules)
 
     is_rule_constant = []
     for variable, rule in control_rules.items() :
@@ -217,7 +235,7 @@ def fitness_function(individual, args) :
         is_rule_constant.append(expression.is_constant())
 
     if all(is_rule_constant) :
-        logger.debug("All control rules of the individual are constant, discarding...")
+        #logger.debug("All control rules of the individual are constant, discarding...")
         return fitness
 
     # otherwise, create a local copy of the viability problem, that will be modified only here
@@ -228,24 +246,38 @@ def fitness_function(individual, args) :
 
     # and now, we run a simulation for each initial condition
     for ic in initial_conditions :
-        logger.debug("Now running simulation for initial conditions %s..." % str(ic))
-        # there might be some crash here, so 
-        try :
-            output_values, constraint_violations = vp.run_simulation(ic, time_step, max_time, saturate_control_function_on_boundaries=True) 
+        with no_stderr_stdout() : # try to mute the standard output and the standard error
+            #logger.debug("Now running simulation for initial conditions %s..." % str(ic))
+            # there might be some crash here, so 
+            try :
+                output_values, constraint_violations = vp.run_simulation(ic, time_step, max_time, saturate_control_function_on_boundaries=True) 
 
-            # compute the fitness, based on how long the simulation ran before a constraint violation
-            fitness += len(output_values[state_variables[1]]) / (max_time/time_step)
+                # compute the fitness, based on how long the simulation ran before a constraint violation
+                fitness += len(output_values[state_variables[1]]) / (max_time/time_step)
 
-        except Exception :
-            # if executing the control rules raises an exception, fitness becomes zero and we immediately
-            # terminate the loop
-            logger.debug("Individual \"%s\" created an exception, it will have fitness zero" % control_rules)
-            fitness = 0.0
-            break 
+            except Exception :
+                # if executing the control rules raises an exception, fitness becomes zero and we immediately
+                # terminate the loop
+                #logger.debug("Individual \"%s\" created an exception, it will have fitness zero" % control_rules)
+                fitness = 0.0
+                break 
 
-    logger.debug("Fitness for individual \"%s\" is %.4f" % (control_rules, fitness))
+    #logger.debug("Fitness for individual \"%s\" is %.4f" % (control_rules, fitness))
 
     return fitness
+
+
+def evaluator_multiprocess(candidates, args) :
+    """
+    Wrapper of the fitness function, used for experiments with multiple processes (and not threads).
+    """
+    
+    fitness_list = []
+    for c in candidates :
+        fitness_list.append( fitness_function(c, args) )
+
+    return fitness_list
+
 
 @inspyred.ec.variators.crossover
 def variator(random, individual1, individual2, args) :
@@ -333,6 +365,40 @@ def variator(random, individual1, individual2, args) :
     return offspring
 
 
+def replacer(random, population, parents, offspring, args) :
+    """
+    This is a custom replacer, that basically rescales the fitness of all individuals in the population, based on the fitness of the best
+    individuals among the parents. This is necessary because individuals are evaluated on a different set of initial conditions at each
+    generations, and it would be interesting to know whether the apparent improvement seen over the generations is actually due to real
+    improvements in the best individual, or just random luck in the choice of the initial conditions (more viable vs non-viable initial
+    conditions).
+    """
+    # TODO the difficult part here is to store the non-scaled and scaled fitness values separatedly 
+
+    logger = args["logger"]
+    logger.debug("Starting the replacement procedure...")
+    
+    # find the best individual among the parents
+    best_parent = parents.sort(reverse=True) # highest value first
+    logger.debug("The best individual is: \"%s\"; re-evaluating on initial conditions %s" % 
+            (individual2string(best_parent.candidate), str(args["current_initial_conditions"])))
+
+    # evaluate the best parent on the current initial conditions
+    old_best_fitness = best_parent.fitness
+    new_best_fitness = fitness_function(best_parent.candidate, args)
+    logger.debug("Previous fitness for best individual: %4.f; new fitness: %.4f" % (old_best_fitness, new_best_fitness))
+
+    # rescale old fitness values according to the new fitness value of the best individual:
+    # - parents' fitness is rescaled by fitness_value * new_best_fitness / old_best_fitness
+    for parent in parents :
+        parent.fitness = parent.fitness * new_best_fitness / old_best_fitness
+
+    # now, sort by fitness and save the best using a mu+lambda scheme
+    survivors = sorted(parents + offspring, reverse=True, lambda x : x.fitness)
+
+    return survivors[:len(population)]
+
+
 def observer(population, num_generations, num_evaluations, args) :
     """
     The observer is a classic function for inspyred, that prints out information and/or saves individuals. However, it can be easily re-used by other
@@ -374,6 +440,12 @@ def observer(population, num_generations, num_evaluations, args) :
     df = pd.DataFrame.from_dict(dictionary_generation)
     df.sort_values(by=["fitness"], ascending=False, inplace=True)
     df.to_csv(file_generation, index=False)
+
+    # if the multi-process evaluation is active, we need to draw a new set of initial conditions here
+    # TODO I need to understand where the multiprocess thing is defined, and how to check it; I could set a flag
+    initial_conditions = [ args["viability_problem"].get_random_viable_point(args["random"]) for i in range(0, args["n_initial_conditions"]) ]
+    logger.debug("Initial conditions for generation %d: %s" % (num_generations+1, str(initial_conditions)))
+    args["current_initial_conditions"] = initial_conditions
 
     return
 
@@ -501,10 +573,17 @@ def evolve_rules(viability_problem, random_seed) :
     ea.variator = variator
     ea.observer = observer
 
+    # if multi-process evaluation is active, we need to draw the random initial conditions for generation 0 here
+    current_initial_conditions = [ viability_problem.get_random_viable_point(prng) for i in range(0, n_initial_conditions) ]
+    logger.debug("Initial conditions for generation 0: %s" % str(current_initial_conditions))
+
     logger.info("Starting evolutionary optimization...")
     final_population = ea.evolve(
                             generator=generator,
-                            evaluator=multi_thread_evaluator,
+                            #evaluator=multi_thread_evaluator, # uncomment this for personalized multi-threaded evaluation of individuals
+                            evaluator=inspyred.ec.evaluators.parallel_evaluation_mp, # uncomment the following three lines for multi-process evaluation
+                            mp_evaluator=evaluator_multiprocess,
+                            mp_num_cpus=8,
                             pop_size=100,
                             num_selected=150,
                             maximize=True,
@@ -523,6 +602,7 @@ def evolve_rules(viability_problem, random_seed) :
                             time_step = time_step,
                             max_time = max_time,
                             n_initial_conditions = n_initial_conditions,
+                            current_initial_conditions = current_initial_conditions,
                             # settings for gplearn
                             gplearn_settings = gplearn_settings,
                             p_crossover = 0.4,

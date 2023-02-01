@@ -394,7 +394,7 @@ def replacer(random, population, parents, offspring, args) :
         parent.fitness = parent.fitness * new_best_fitness / old_best_fitness
 
     # now, sort by fitness and save the best using a mu+lambda scheme
-    survivors = sorted(parents + offspring, reverse=True, lambda x : x.fitness)
+    survivors = sorted(parents + offspring, lambda x : x.fitness, reverse=True)
 
     return survivors[:len(population)]
 

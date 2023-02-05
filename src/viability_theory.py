@@ -318,6 +318,10 @@ class ViabilityTheoryProblem :
 
         # can we find min and max for each state variable from the constraints?
         # TODO replace this part with self.get_variable_boundaries()
+        # TODO  now, we have an issue here; this code below starts from the assumption that it's possible to get a separate list of constraints
+        #       for each state variable. But in some cases, that is not true. For example, the sphere has just one constraint on ALL variables
+        #       Maybe we could replace this function with a function pointer to a function that returns viable points? Or maybe we can just
+        #       create a inherited class that replaces just this method.
         for state_variable in self.equations :
 
             minimum = np.inf

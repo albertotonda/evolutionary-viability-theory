@@ -217,6 +217,7 @@ def fitness_function(individual, args) :
     """
 
     logger = args["logger"]
+    saturate_control_function_on_boundaries = args["saturate_control_function_on_boundaries"]
 
     fitness = 0.0
     initial_conditions = args["current_initial_conditions"]
@@ -250,7 +251,7 @@ def fitness_function(individual, args) :
             #logger.debug("Now running simulation for initial conditions %s..." % str(ic))
             # there might be some crash here, so 
             try :
-                output_values, constraint_violations = vp.run_simulation(ic, time_step, max_time, saturate_control_function_on_boundaries=True) 
+                output_values, constraint_violations = vp.run_simulation(ic, time_step, max_time, saturate_control_function_on_boundaries=saturate_control_function_on_boundaries) 
 
                 # compute the fitness, based on how long the simulation ran before a constraint violation
                 fitness += len(output_values[state_variables[1]]) / (max_time/time_step)
@@ -513,7 +514,7 @@ def evaluate_individual(individual, args, index, fitness_list, thread_lock, thre
 
     return
 
-def evolve_rules(viability_problem, random_seed) :
+def evolve_rules(viability_problem, random_seed=0, saturate_control_function_on_boundaries=False) :
 
     # create directory with name in the date
     directory_output = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + "-viability-theory" 
@@ -574,6 +575,7 @@ def evolve_rules(viability_problem, random_seed) :
     ea.observer = observer
 
     # if multi-process evaluation is active, we need to draw the random initial conditions for generation 0 here
+    logger.debug("Generating initial conditions for generation 0...")
     current_initial_conditions = [ viability_problem.get_random_viable_point(prng) for i in range(0, n_initial_conditions) ]
     logger.debug("Initial conditions for generation 0: %s" % str(current_initial_conditions))
 
@@ -609,9 +611,14 @@ def evolve_rules(viability_problem, random_seed) :
                             p_hoist = 0.1,
                             p_subtree = 0.1,
                             p_point = 0.1,
+                            # should we saturate the control rules on the boundaries?
+                            saturate_control_function_on_boundaries = saturate_control_function_on_boundaries,
                             # this is a flag that will be used for rescaling the fitness
                             rescale_fitness = True,
+                            
                             )
+
+    logger.info("Evolution terminated.")
 
     return
 
@@ -643,7 +650,7 @@ if __name__ == "__main__" :
     vp = ViabilityTheoryProblem(equations=equations, control=control, constraints=constraints, parameters=parameters)
     print("Evolving control rules for the following viability problem:", vp)
 
-    evolve_rules(viability_problem=vp, random_seed=42)
+    evolve_rules(viability_problem=vp, random_seed=42, saturate_control_function_on_boundaries=True)
 
     sys.exit(0)
 

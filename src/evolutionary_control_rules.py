@@ -8,6 +8,7 @@ import numpy as np
 import os
 import pandas as pd
 import random
+import signal # used to manage timeouts
 import sympy
 import sys
 
@@ -247,25 +248,40 @@ def fitness_function(individual, args) :
 
     # and now, we run a simulation for each initial condition
     for ic in initial_conditions :
-        with no_stderr_stdout() : # try to mute the standard output and the standard error
+        with no_stderr_stdout() : # try to mute the standard output and the standard error # NOTE: it does not work
             #logger.debug("Now running simulation for initial conditions %s..." % str(ic))
-            # there might be some crash here, so 
+            # there might be some crash here, so we perform exception handling; we also set a timeout of 10 minutes PER CONDITION that will raise an exception
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(360)
             try :
                 output_values, constraint_violations = vp.run_simulation(ic, time_step, max_time, saturate_control_function_on_boundaries=saturate_control_function_on_boundaries) 
 
                 # compute the fitness, based on how long the simulation ran before a constraint violation
                 fitness += len(output_values[state_variables[1]]) / (max_time/time_step)
 
+                # reset the alarm
+                signal.alarm(0)
+
             except Exception :
                 # if executing the control rules raises an exception, fitness becomes zero and we immediately
                 # terminate the loop
                 #logger.debug("Individual \"%s\" created an exception, it will have fitness zero" % control_rules)
                 fitness = 0.0
+
+                # also reset the alarm, just to be safe
+                signal.alarm(0)
                 break 
 
     #logger.debug("Fitness for individual \"%s\" is %.4f" % (control_rules, fitness))
 
     return fitness
+
+
+def timeout_handler(num, stack) :
+    """
+    Utility function that is called when a timeout expires; raises an exception, that should be caught by the exception handler inside fitness_function
+    """
+    raise Exception("Timeout")
 
 
 def evaluator_multiprocess(candidates, args) :
@@ -514,7 +530,7 @@ def evaluate_individual(individual, args, index, fitness_list, thread_lock, thre
 
     return
 
-def evolve_rules(viability_problem, random_seed=0, saturate_control_function_on_boundaries=False) :
+def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10, n_threads=8, saturate_control_function_on_boundaries=False) :
 
     # create directory with name in the date
     directory_output = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + "-viability-theory" 
@@ -527,8 +543,6 @@ def evolve_rules(viability_problem, random_seed=0, saturate_control_function_on_
     logger.info("Setting up evolutionary algorithm...")
 
     # hard-coded values, probably to be replaced with function arguments
-    n_threads = 8
-    n_initial_conditions = 10
     time_step = 0.1
     max_time = 100
 

@@ -26,7 +26,7 @@ class ViabilityTheoryProblemSphere(viability_theory.ViabilityTheoryProblem) :
 
         # then, replace all parameters in the constraint with their values
         constraint = constraint.subs(self.parameters)
-        print("Constraint to be satisfied: \"%s\"" % str(constraint))
+        #print("Constraint to be satisfied: \"%s\"" % str(constraint))
 
         # and now, we draw random points until we get one that satisfies the constraint; the minimum and maximum are hard-coded because it's too hard to do otherwise
         point = None
@@ -36,12 +36,12 @@ class ViabilityTheoryProblemSphere(viability_theory.ViabilityTheoryProblem) :
             point = { state_variable : random.uniform(-1.23, 1.23) for state_variable in self.equations }
             # if, by replacing the values of the state variables in the constraint, the constraint is reduced to 'True' in sympy terms
             constraint_value = constraint.subs(point)
-            print("Point:", point)
-            print("Constraint value:", constraint_value)
+            #print("Point:", point)
+            #print("Constraint value:", constraint_value)
             if isinstance(constraint_value, sympy.logic.boolalg.BooleanTrue) or constraint_value == True :
                 constraint_satisifed = True
 
-        print("I got one viable point!")
+        #print("I got one viable point!")
         return point
 
 if __name__ == "__main__" :

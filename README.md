@@ -4,6 +4,7 @@ Repository for the experiments on EAs applied to viability theory
 ## Ideas
 1. Add the limits to the state variables as values to seed the initial population of gplearn.
 2. Create hash for the string representation of individuals, to avoid useless (?) fitness evaluations. However, if the same individual is evaluated in different generations, it should have different fitness values.
+3. Add 'min' and 'max' to the function set, to more easily reproduce thresholding/saturation without giving explicit instruction to the individual. Otherwise the problem might become too easy, at least for the Lake case study.
 
 ## Lessons learned and design choices
 

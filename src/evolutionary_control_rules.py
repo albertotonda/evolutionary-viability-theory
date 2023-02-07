@@ -530,7 +530,7 @@ def evaluate_individual(individual, args, index, fitness_list, thread_lock, thre
 
     return
 
-def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10, n_threads=8, saturate_control_function_on_boundaries=False) :
+def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10, n_threads=8, pop_size=100, offspring_size=200, max_evaluations=1000, saturate_control_function_on_boundaries=False) :
 
     # create directory with name in the date
     directory_output = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + "-viability-theory" 
@@ -599,11 +599,11 @@ def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10, n_th
                             #evaluator=multi_thread_evaluator, # uncomment this for personalized multi-threaded evaluation of individuals
                             evaluator=inspyred.ec.evaluators.parallel_evaluation_mp, # uncomment the following three lines for multi-process evaluation
                             mp_evaluator=evaluator_multiprocess,
-                            mp_num_cpus=8,
-                            pop_size=100,
-                            num_selected=150,
+                            mp_num_cpus=n_threads,
+                            pop_size=pop_size,
+                            num_selected=offspring_size,
                             maximize=True,
-                            max_evaluations=1000,
+                            max_evaluations=max_evaluations,
 
                             # all items below this line go into the 'args' dictionary passed to each function
                             directory_output = directory_output,

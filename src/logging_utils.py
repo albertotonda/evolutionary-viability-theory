@@ -32,7 +32,7 @@ def initialize_logging(path: str, log_name: str = "", date: bool = True) -> logg
 
     # the 'RotatingFileHandler' object implements a log file that is automatically limited in size
     fh = RotatingFileHandler(log_name,
-                             mode='a',
+                             mode='a+',
                              maxBytes=100*1024*1024,
                              backupCount=2,
                              encoding=None,

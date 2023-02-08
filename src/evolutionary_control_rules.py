@@ -37,7 +37,7 @@ from gplearn._program import _Program
 from gplearn.functions import _Function, _function_map, add2, sub2, mul2, div2, sqrt1, log1, sin1, cos1 
 
 # parts from multiprocessing, to try and have a personalized version of the multiprocessing evaluation
-from multiprocessing import Manager, Pool, TimeoutError
+from multiprocessing import Lock, Manager, Pool, TimeoutError
 
 # local modules
 from logging_utils import initialize_logging, close_logging
@@ -246,8 +246,8 @@ def fitness_function(individual, args) :
         with no_stderr_stdout() : # try to mute the standard output and the standard error # NOTE: it does not work
             #logger.debug("Now running simulation for initial conditions %s..." % str(ic))
             # there might be some crash here, so we perform exception handling; we also set a timeout of 10 minutes PER CONDITION that will raise an exception
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(360)
+            #signal.signal(signal.SIGALRM, timeout_handler)
+            #signal.alarm(360)
             try :
                 output_values, constraint_violations = vp.run_simulation(ic, time_step, max_time, saturate_control_function_on_boundaries=saturate_control_function_on_boundaries) 
 
@@ -255,7 +255,7 @@ def fitness_function(individual, args) :
                 fitness += len(output_values[state_variables[1]]) / (max_time/time_step)
 
                 # reset the alarm
-                signal.alarm(0)
+                #signal.alarm(0)
 
             except Exception :
                 # if executing the control rules raises an exception, fitness becomes zero and we immediately
@@ -264,7 +264,7 @@ def fitness_function(individual, args) :
                 fitness = 0.0
 
                 # also reset the alarm, just to be safe
-                signal.alarm(0)
+                #signal.alarm(0)
                 break 
 
     #logger.debug("Fitness for individual \"%s\" is %.4f" % (control_rules, fitness))
@@ -474,8 +474,9 @@ def multi_process_evaluator(candidates, args) :
     fitness_list = [0.0] * len(candidates)
     with Manager() as manager :
 
-        # create shared fitness list
+        # create shared fitness list and a lock
         shared_fitness_list = manager.list(fitness_list)
+        lock = manager.Lock()
 
         # create a process pool
         logger.debug("Setting up process pool...")
@@ -484,11 +485,11 @@ def multi_process_evaluator(candidates, args) :
         # map arguments to processes 
         arguments_list = []
         for index, candidate in enumerate(candidates) :
-            arguments_list.append([candidate, args, shared_fitness_list, index])
+            arguments_list.append([candidate, args, shared_fitness_list, index, lock])
 
         # start evaluation
         logger.debug("Starting multi-process evaluation of %d individuals..." % len(candidates))
-        pool.map(process_evaluator, arguments)
+        pool.map(process_evaluator, arguments_list)
 
         # here the shared fitness list should be copied on the actual fitness list
         for i in range(0, len(shared_fitness_list)) :
@@ -496,24 +497,47 @@ def multi_process_evaluator(candidates, args) :
 
     return fitness_list
 
-# TODO set up timeout
+
 def process_evaluator(arguments) :
     """
     Wrapper function for multi-process evaluation. It should set a timeout and manage exclusive access to the fitness list, to avoid issues of synchronization.
     """
-    candidate, args, shared_fitness_list, index = arguments
+    candidate, args, shared_fitness_list, index, lock = arguments
 
     # let's try to perform some debugging, and for that, we need to get the process PID
     logger = args["logger"]
     process = multiprocessing.current_process()
     pid = process.pid
-    logger.debug("[%s] Starting evaluation of candidate %d \"%s\"..." % (str(pid), index, str(candidate)))
+    control_rules = { variable : equation_string_representation(control_rule) for variable, control_rule in candidate.items() }
+    
+    # we need to lock access to the logger, to avoid multiple processes from trying to use it at the same time
+    lock.acquire()
+    logger.debug("[%s] Starting evaluation of candidate %d..." % (str(pid), index))
+    lock.release()
 
-    # call the true evaluation function
-    fitness_value = fitness_function(candidate, args)  
+    # we start a timeout here, the exception raised by timeout_handler should be caught inside the function
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(3600*2) # two hours
 
-    # wrap up the evaluation
-    logger.debug("[%s] Evaluation of candidate %d \"%s\" finished." % (str(pid), index, str(candidate)))
+    try :
+        # call the true evaluation function
+        fitness_value = fitness_function(candidate, args)  
+
+        # wrap up the evaluation
+        lock.acquire()
+        logger.debug("[%s] Evaluation of candidate %d finished." % (str(pid), index))
+        lock.release()
+        
+        # reset alarm
+        signal.alarm(0)
+
+    except TimeoutError as te :
+        fitness_value = 0.0
+        lock.acquire()
+        logger.debug("[%s] Evaluation of candidate %d \"%s\" failed due to a timeout." % (str(pid), index, str(control_rules)))
+        lock.release()
+        signal.alarm(0)
+
     shared_fitness_list[index] = fitness_value
 
     return
@@ -652,9 +676,10 @@ def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10, n_th
     final_population = ea.evolve(
                             generator=generator,
                             #evaluator=multi_thread_evaluator, # uncomment this for personalized multi-threaded evaluation of individuals
-                            evaluator=inspyred.ec.evaluators.parallel_evaluation_mp, # uncomment the following three lines for multi-process evaluation
-                            mp_evaluator=evaluator_multiprocess,
-                            mp_num_cpus=n_threads,
+                            #evaluator=inspyred.ec.evaluators.parallel_evaluation_mp, # uncomment the following three lines for multi-process evaluation
+                            #mp_evaluator=evaluator_multiprocess,
+                            #mp_num_cpus=n_threads,
+                            evaluator=multi_process_evaluator, # uncomment this to use a personalized version of multi-processing, with timeout
                             pop_size=pop_size,
                             num_selected=offspring_size,
                             maximize=True,

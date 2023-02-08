@@ -4,6 +4,7 @@ Script that implements the evolutionary loop to create control rules using Genet
 import copy
 import datetime
 import inspyred
+import multiprocessing
 import numpy as np
 import os
 import pandas as pd
@@ -29,10 +30,14 @@ def no_stderr_stdout() :
     yield
     sys.stdout = save_stdout
     sys.stderr = save_stderr
+# end of the stuff to prevent writing to stderr; if we find another way, all this stuff could be removed
 
 # steal parts from gplearn: _Program is the basically an individual class, the others are functions
 from gplearn._program import _Program
 from gplearn.functions import _Function, _function_map, add2, sub2, mul2, div2, sqrt1, log1, sin1, cos1 
+
+# parts from multiprocessing, to try and have a personalized version of the multiprocessing evaluation
+from multiprocessing import Manager, Pool, TimeoutError
 
 # local modules
 from logging_utils import initialize_logging, close_logging
@@ -40,18 +45,7 @@ from multithread_utils import ThreadPool, Worker
 from viability_theory import ViabilityTheoryProblem
 from threading import Thread, Lock
 
-# this is a map used to convert from gplearn representation to string
-#function2string = {
-#        add2 : "+",
-#        sub2 : "-",
-#        mul2 : "*",
-#        div2 : "/",
-#        sqrt1 : "sqrt",
-#        log1 : "log",
-#        sin1 : "sin",
-#        cos1 : "cos",
-#        }
-
+# utility dictionary, to map from gplearn's internal representation to a string that sympy can interpret
 function2string = {
         "add" : "+",
         "sub" : "-",
@@ -211,6 +205,7 @@ def generator(random, args) :
         logger.debug("For control variable \"%s\", equation \"%s\"" % (control_variable, equation_string_representation(individual[control_variable])))
 
     return individual
+
 
 def fitness_function(individual, args) :
     """
@@ -466,6 +461,64 @@ def observer(population, num_generations, num_evaluations, args) :
 
     return
 
+
+def multi_process_evaluator(candidates, args) :
+    """
+    Alternative multi-process function, that tries to impose timeouts. It's more of an attempt to see if we can improve
+    inspyred's multi-process evaluation. Uses the multiprocessing Python package.
+    """
+    n_processes = args["n_threads"]
+    logger = args["logger"]
+
+    # create shared fitness list, using a Manager
+    fitness_list = [0.0] * len(candidates)
+    with Manager() as manager :
+
+        # create shared fitness list
+        shared_fitness_list = manager.list(fitness_list)
+
+        # create a process pool
+        logger.debug("Setting up process pool...")
+        pool = Pool(n_processes) 
+
+        # map arguments to processes 
+        arguments_list = []
+        for index, candidate in enumerate(candidates) :
+            arguments_list.append([candidate, args, shared_fitness_list, index])
+
+        # start evaluation
+        logger.debug("Starting multi-process evaluation of %d individuals..." % len(candidates))
+        pool.map(process_evaluator, arguments)
+
+        # here the shared fitness list should be copied on the actual fitness list
+        for i in range(0, len(shared_fitness_list)) :
+            fitness_list[i] = shared_fitness_list[i]
+
+    return fitness_list
+
+# TODO set up timeout
+def process_evaluator(arguments) :
+    """
+    Wrapper function for multi-process evaluation. It should set a timeout and manage exclusive access to the fitness list, to avoid issues of synchronization.
+    """
+    candidate, args, shared_fitness_list, index = arguments
+
+    # let's try to perform some debugging, and for that, we need to get the process PID
+    logger = args["logger"]
+    process = multiprocessing.current_process()
+    pid = process.pid
+    logger.debug("[%s] Starting evaluation of candidate %d \"%s\"..." % (str(pid), index, str(candidate)))
+
+    # call the true evaluation function
+    fitness_value = fitness_function(candidate, args)  
+
+    # wrap up the evaluation
+    logger.debug("[%s] Evaluation of candidate %d \"%s\" finished." % (str(pid), index, str(candidate)))
+    shared_fitness_list[index] = fitness_value
+
+    return
+
+
 def multi_thread_evaluator(candidates, args) :
     """
     Wrapper function for multi-thread evaluation of the fitness.
@@ -510,6 +563,7 @@ def multi_thread_evaluator(candidates, args) :
 
     return fitness_list
 
+
 def evaluate_individual(individual, args, index, fitness_list, thread_lock, thread_id) :
     """
     Wrapper function for individual evaluation, to be run inside a thread.
@@ -529,6 +583,7 @@ def evaluate_individual(individual, args, index, fitness_list, thread_lock, thre
     logger.debug("[Thread %d] Evaluation finished." % thread_id)
 
     return
+
 
 def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10, n_threads=8, pop_size=100, offspring_size=200, max_evaluations=1000, saturate_control_function_on_boundaries=False) :
 

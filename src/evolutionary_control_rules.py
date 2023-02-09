@@ -235,20 +235,22 @@ def fitness_function(individual, args) :
         #logger.debug("All control rules of the individual are constant, discarding...")
         return fitness
 
-    # otherwise, create a local copy of the viability problem, that will be modified only here
-    vp = copy.deepcopy(vp)
-    # modify it, so that the control rules are now the same as the individual
-    vp.set_control(control_rules)
-    state_variables = [ v for v in vp.equations ]
+    # the try / except statement has been moved up here, so that we also catch exceptions 
+    # due to sympy not being able to analyze the candidate individual (a problem that came out with the sphere)
+    try :
+        # otherwise, create a local copy of the viability problem, that will be modified only here
+        vp = copy.deepcopy(vp)
+        # modify it, so that the control rules are now the same as the individual
+        vp.set_control(control_rules)
+        state_variables = [ v for v in vp.equations ]
 
-    # and now, we run a simulation for each initial condition
-    for ic in initial_conditions :
-        with no_stderr_stdout() : # try to mute the standard output and the standard error # NOTE: it does not work
-            #logger.debug("Now running simulation for initial conditions %s..." % str(ic))
-            # there might be some crash here, so we perform exception handling; we also set a timeout of 10 minutes PER CONDITION that will raise an exception
-            #signal.signal(signal.SIGALRM, timeout_handler)
-            #signal.alarm(360)
-            try :
+        # and now, we run a simulation for each initial condition
+        for ic in initial_conditions :
+            with no_stderr_stdout() : # try to mute the standard output and the standard error # NOTE: it does not work
+                #logger.debug("Now running simulation for initial conditions %s..." % str(ic))
+                # there might be some crash here, so we perform exception handling; we also set a timeout of 10 minutes PER CONDITION that will raise an exception
+                #signal.signal(signal.SIGALRM, timeout_handler)
+                #signal.alarm(360)
                 output_values, constraint_violations = vp.run_simulation(ic, time_step, max_time, saturate_control_function_on_boundaries=saturate_control_function_on_boundaries) 
 
                 # compute the fitness, based on how long the simulation ran before a constraint violation
@@ -257,15 +259,13 @@ def fitness_function(individual, args) :
                 # reset the alarm
                 #signal.alarm(0)
 
-            except Exception :
-                # if executing the control rules raises an exception, fitness becomes zero and we immediately
-                # terminate the loop
-                #logger.debug("Individual \"%s\" created an exception, it will have fitness zero" % control_rules)
-                fitness = 0.0
+    except Exception :
+        # if executing the control rules raises an exception, fitness becomes zero
+        #logger.debug("Individual \"%s\" created an exception, it will have fitness zero" % control_rules)
+        fitness = 0.0
 
-                # also reset the alarm, just to be safe
-                #signal.alarm(0)
-                break 
+        # also reset the alarm, just to be safe
+        #signal.alarm(0)
 
     #logger.debug("Fitness for individual \"%s\" is %.4f" % (control_rules, fitness))
 
@@ -276,7 +276,7 @@ def timeout_handler(num, stack) :
     """
     Utility function that is called when a timeout expires; raises an exception, that should be caught by the exception handler inside fitness_function
     """
-    raise Exception("Timeout")
+    raise TimeoutError
 
 
 def evaluator_multiprocess(candidates, args) :
@@ -512,7 +512,8 @@ def process_evaluator(arguments) :
     
     # we need to lock access to the logger, to avoid multiple processes from trying to use it at the same time
     lock.acquire()
-    logger.debug("[%s] Starting evaluation of candidate %d..." % (str(pid), index))
+    #logger.debug("[%s] Starting evaluation of candidate %d..." % (str(pid), index))
+    logger.debug("Starting evaluation of a candidate...")
     lock.release()
 
     # we start a timeout here, the exception raised by timeout_handler should be caught inside the function
@@ -525,7 +526,8 @@ def process_evaluator(arguments) :
 
         # wrap up the evaluation
         lock.acquire()
-        logger.debug("[%s] Evaluation of candidate %d finished." % (str(pid), index))
+        #logger.debug("[%s] Evaluation of candidate %d finished." % (str(pid), index))
+        logger.debug("Evaluation of candidate finished.")
         lock.release()
         
         # reset alarm

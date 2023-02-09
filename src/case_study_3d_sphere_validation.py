@@ -1,5 +1,6 @@
+
 """
-Simple script to validate the individuals from the lake eutrophication viability problem and plot figures.
+Simple script to validate the individuals from the sphere problem and plot figures.
 """
 import os
 import pandas as pd
@@ -20,7 +21,7 @@ def process(args) :
     # there is a chance that the file already exists
     if not os.path.exists(file_name) :
         print("Running simulation for ic #%d..." % index)
-        output_values, constraint_violations = vp.run_simulation(ic, 0.01, 100, saturate_control_function_on_boundaries=True) 
+        output_values, constraint_violations = vp.run_simulation(ic, 0.01, 100, saturate_control_function_on_boundaries=False) 
         print("Saving results to file \"%s\"..." % file_name)
         df = pd.DataFrame.from_dict(output_values)
         df.to_csv(file_name, index=False)
@@ -34,58 +35,59 @@ if __name__ == "__main__" :
     # hard-coded values
     random_seed = 4242
     prng = random.Random(random_seed)
-    directory_name = "lake_trajectories_final"
-    ic_file_name = "lake_ic.csv"
+    directory_name = "sphere_trajectories"
+    ic_file_name = "sphere_ic.csv"
     trajectory_base_file_name = "trajectory-base-%d.csv"
     trajectory_best_file_name = "trajectory-best-%d.csv"
     n_ic = 1000
 
-    control_generation_0 = "sin((L+(-0.6992)))-(log(L)-((-0.7323)-(0.7294)))"
-    control_generation_10 = "sin(sin((L+(-0.6992))))-(log(L)-((-0.7323)-(0.7294)))"
-    control_generation_19 = "sin(log(L))-(log(L)-((-0.7323)-(0.7294)))"
+    control_generation_0 = {'u_x' : '((((-0.5125)-(-0.4354))-x)+x)', 'u_y' : 'sin((x+x))', 'u_z' : '(cos(z)+x)'}
 
-    control_generation_0_previous_experiment_1 = "log(cos((sin(L)*L)))"
-    control_generation_0_previous_experiment_2 = "sin((L+-0.6992))-(L+-0.6992)"
-    control_generation_0_previous_experiment_3 = "sin(((P-L)*(L-P)))"
+    control_generation_72 = {'u_x' : '(y*(((-0.9655)/y)*x))', 'u_y' : 'cos(cos(((y+log(cos((z*(-0.4505)))))*(0.3767))))', 'u_z' : '(z*sin((-0.6640)))'}
+
+    control_generation_85 = {'u_x' : '(y*(((-0.9655)/y)*x))', 'u_y' : 'cos(cos(((y+log(cos((z*(-0.4505)))))*(0.3767))))', 'u_z' : '(z*sin((-0.6640)))'}
 
     # set up the viability problem
     equations = {
-            "L" : "u",
-            "P" : "-b * P + L + r * P**q/(m**q + P**q)"
+            "x" : "x + a * u_x",
+            "y" : "y + a * u_y",
+            "z" : "z + a * u_z"
             }
-    control = {"u" : ""}
+    control = {
+            "u_x" : "",
+            "u_y" : "",
+            "u_z" : ""
+            }
     constraints = {
-            "u" : ["u >= umin", "u <= umax"],
-            "L" : ["L >= Lmin", "L <= Lmax"],
-            "P" : ["P >= 0", "P <= Pmax"],
+            "x" : ["x * x + y * y + z * z < r"],
+            "u_x" : ["u_x * u_x + u_y * u_y + u_z * u_z < 1"]
             }
     parameters = {
-            "b" : 0.8,
-            "r" : 1.0,
-            "q" : 8.0,
-            "m" : 1.0,
-            "umin" : -0.09,
-            "umax" : 0.09,
-            "Lmin" : 0.1,
-            "Lmax" : 1.0,
-            "Pmax" : 1.4,
+            "a" : 1.0,
+            "r" : 1.5
             }
 
-    # two instances: one with the best, one with base individual
-    #vp_base = ViabilityTheoryProblem(equations=equations, control=control, constraints=constraints, parameters=parameters)
-    #vp_base.set_control({"u" : control_generation_0_previous_experiment_3})
+    # I also need to import the special inherited class for the sphere,
+    # to get the proper random generation of initial conditions
+    from case_study_3d_sphere import ViabilityTheoryProblemSphere
 
-    vp_best = ViabilityTheoryProblem(equations=equations, control=control, constraints=constraints, parameters=parameters)
-    vp_best.set_control({"u" : control_generation_19})
+    # two instances: one with the best, one with base individual
+    #vp_base = ViabilityTheoryProblemSphere(equations=equations, control=control, constraints=constraints, parameters=parameters)
+    #vp_base.set_control(control_generation_0)
+
+    vp_best = ViabilityTheoryProblemSphere(equations=equations, control=control, constraints=constraints, parameters=parameters)
+    vp_best.set_control(control_generation_72)
 
     # create a directory to store trajectories 
     if not os.path.exists(directory_name) : os.mkdir(directory_name)
 
     # create file with initial trajectories, if it does not exist yet
     if not os.path.exists(os.path.join(directory_name, ic_file_name)) :
-        df_dict = {"L": [], "P": []}
+        df_dict = {"x" : [], "y" : [], "z" : []}
         for i in range(0, n_ic) :
+            print("Generating random initial condition #%d" % i)
             ic = vp_base.get_random_viable_point(prng)
+            print("Random initial condition:", ic)
             for k, v in ic.items() :
                 df_dict[k].append(v)
 
@@ -101,7 +103,7 @@ if __name__ == "__main__" :
     process_arguments = []
 
     for index, row in df.iterrows() :
-        ic = {"L" : row["L"], "P" : row["P"]}
+        ic = {"x" : row["x"], "y" : row["y"], "z" : row["z"]}
         
         # add arguments for a vp_base and a vp_best run
         if index < 1001 :

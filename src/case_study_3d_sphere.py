@@ -33,7 +33,7 @@ class ViabilityTheoryProblemSphere(viability_theory.ViabilityTheoryProblem) :
         constraint_satisifed = False
 
         while constraint_satisifed == False :
-            point = { state_variable : random.uniform(-1.23, 1.23) for state_variable in self.equations }
+            point = { state_variable : random.uniform(-2, 2) for state_variable in self.equations }
             # if, by replacing the values of the state variables in the constraint, the constraint is reduced to 'True' in sympy terms
             constraint_value = constraint.subs(point)
             #print("Point:", point)
@@ -58,8 +58,10 @@ if __name__ == "__main__" :
             "u_z" : ""
             }
     constraints = {
-            "x" : ["x * x + y * y + z * z < r"],
-            "u_x" : ["u_x * u_x + u_y * u_y + u_z * u_z < 1"]
+            "x" : ["x * x + y * y + z * z < r", "u_x * u_x + u_y * u_y + u_z * u_z < 1"],
+            "u_x" : ["u_x >= -1.0", "u_x <= 1.0"],
+            "u_y" : ["u_y >= -1.0", "u_y <= 1.0"],
+            "u_z" : ["u_z >= -1.0", "u_z <= 1.0"]
             }
     parameters = {
             "a" : 1.0,
@@ -69,6 +71,6 @@ if __name__ == "__main__" :
 
     # start the evolution
     print("Evolving control rules for the following viability problem:", vp)
-    evolutionary_control_rules.evolve_rules(viability_problem=vp, random_seed=44, saturate_control_function_on_boundaries=False)
+    evolutionary_control_rules.evolve_rules(viability_problem=vp, random_seed=44, saturate_control_function_on_boundaries=True)
 
     sys.exit(0)

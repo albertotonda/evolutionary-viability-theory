@@ -35,7 +35,7 @@ if __name__ == "__main__" :
     # hard-coded values
     random_seed = 4242
     prng = random.Random(random_seed)
-    directory_name = "sphere_trajectories"
+    directory_name = "sphere_trajectories_final"
     ic_file_name = "sphere_ic.csv"
     trajectory_base_file_name = "trajectory-base-%d.csv"
     trajectory_best_file_name = "trajectory-best-%d.csv"
@@ -46,6 +46,8 @@ if __name__ == "__main__" :
     control_generation_72 = {'u_x' : '(y*(((-0.9655)/y)*x))', 'u_y' : 'cos(cos(((y+log(cos((z*(-0.4505)))))*(0.3767))))', 'u_z' : '(z*sin((-0.6640)))'}
 
     control_generation_85 = {'u_x' : '(y*(((-0.9655)/y)*x))', 'u_y' : 'cos(cos(((y+log(cos((z*(-0.4505)))))*(0.3767))))', 'u_z' : '(z*sin((-0.6640)))'}
+
+    control_timed_out = {'u_x': '(y*(sin(sqrt(((sqrt((sin(sqrt((sin((-0.3596))+(cos(sqrt((sin((0.0690))+(x*z))))/sin((sin(cos(z))-sqrt(((0.4444)/y))))))))-sin(sqrt((log((-0.6927))*sin(((x*cos(((0.7005)*z)))/log(((x+x)+(z*z))))))))))+(((cos(log(sin(((cos(y)*sqrt((y*z)))/log((y+(y*y)))))))/sin(x))-sin(cos(sin(((((x*(z-x))-sin((y*(-0.7605))))+(cos(sqrt(y))/(-0.5535)))-(cos((0.5265))*(0.6450)))))))+(0.0405)))+sin(y))))*x))', 'u_y': 'cos(cos(((y+log(cos((z*(-0.4505)))))*(0.3767))))', 'u_z': '(z*sin((-0.6640)))'}
 
     # set up the viability problem
     equations = {
@@ -76,7 +78,7 @@ if __name__ == "__main__" :
     #vp_base.set_control(control_generation_0)
 
     vp_best = ViabilityTheoryProblemSphere(equations=equations, control=control, constraints=constraints, parameters=parameters)
-    vp_best.set_control(control_generation_72)
+    vp_best.set_control(control_timed_out)
 
     # create a directory to store trajectories 
     if not os.path.exists(directory_name) : os.mkdir(directory_name)

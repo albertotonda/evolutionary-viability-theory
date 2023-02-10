@@ -512,8 +512,8 @@ def process_evaluator(arguments) :
     
     # we need to lock access to the logger, to avoid multiple processes from trying to use it at the same time
     lock.acquire()
-    #logger.debug("[%s] Starting evaluation of candidate %d..." % (str(pid), index))
-    logger.debug("Starting evaluation of a candidate...")
+    logger.debug("[%s] Starting evaluation of candidate %d..." % (str(pid), index))
+    #logger.debug("Starting evaluation of a candidate...")
     lock.release()
 
     # we start a timeout here, the exception raised by timeout_handler should be caught inside the function
@@ -526,8 +526,8 @@ def process_evaluator(arguments) :
 
         # wrap up the evaluation
         lock.acquire()
-        #logger.debug("[%s] Evaluation of candidate %d finished." % (str(pid), index))
-        logger.debug("Evaluation of candidate finished.")
+        logger.debug("[%s] Evaluation of candidate %d finished." % (str(pid), index))
+        #logger.debug("Evaluation of candidate finished.")
         lock.release()
         
         # reset alarm

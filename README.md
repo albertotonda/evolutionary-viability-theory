@@ -8,6 +8,9 @@ Repository for the experiments on EAs applied to viability theory
 
 ## Lessons learned and design choices
 
+### 2023-02-10
+- Remove all constraints, evaluate how long it takes to trace ten trajectories or so, with some very complicated control laws. Use this information to set up the likely timeout to stop processes.
+
 ### 2023-02-01
 - Validate individuals by sampling the state space along P=0, for the lake?
 - Use equations for sphere instead of cylinder

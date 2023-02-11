@@ -71,6 +71,6 @@ if __name__ == "__main__" :
 
     # start the evolution
     print("Evolving control rules for the following viability problem:", vp)
-    evolutionary_control_rules.evolve_rules(viability_problem=vp, random_seed=44, saturate_control_function_on_boundaries=True)
+    evolutionary_control_rules.evolve_rules(viability_problem=vp, random_seed=44, n_initial_conditions=50, max_evaluations=100000, pop_size=1000, offspring_size=2000, saturate_control_function_on_boundaries=True)
 
     sys.exit(0)

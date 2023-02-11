@@ -21,7 +21,7 @@ def process(args) :
     # there is a chance that the file already exists
     if not os.path.exists(file_name) :
         print("Running simulation for ic #%d..." % index)
-        output_values, constraint_violations = vp.run_simulation(ic, 0.01, 100, saturate_control_function_on_boundaries=False) 
+        output_values, constraint_violations = vp.run_simulation(ic, 0.01, 100, saturate_control_function_on_boundaries=True) 
         print("Saving results to file \"%s\"..." % file_name)
         df = pd.DataFrame.from_dict(output_values)
         df.to_csv(file_name, index=False)
@@ -35,19 +35,18 @@ if __name__ == "__main__" :
     # hard-coded values
     random_seed = 4242
     prng = random.Random(random_seed)
-    directory_name = "sphere_trajectories_final"
+    directory_name = "sphere_trajectories_saturation"
     ic_file_name = "sphere_ic.csv"
     trajectory_base_file_name = "trajectory-base-%d.csv"
     trajectory_best_file_name = "trajectory-best-%d.csv"
     n_ic = 1000
 
     control_generation_0 = {'u_x' : '((((-0.5125)-(-0.4354))-x)+x)', 'u_y' : 'sin((x+x))', 'u_z' : '(cos(z)+x)'}
-
     control_generation_72 = {'u_x' : '(y*(((-0.9655)/y)*x))', 'u_y' : 'cos(cos(((y+log(cos((z*(-0.4505)))))*(0.3767))))', 'u_z' : '(z*sin((-0.6640)))'}
-
     control_generation_85 = {'u_x' : '(y*(((-0.9655)/y)*x))', 'u_y' : 'cos(cos(((y+log(cos((z*(-0.4505)))))*(0.3767))))', 'u_z' : '(z*sin((-0.6640)))'}
-
     control_timed_out = {'u_x': '(y*(sin(sqrt(((sqrt((sin(sqrt((sin((-0.3596))+(cos(sqrt((sin((0.0690))+(x*z))))/sin((sin(cos(z))-sqrt(((0.4444)/y))))))))-sin(sqrt((log((-0.6927))*sin(((x*cos(((0.7005)*z)))/log(((x+x)+(z*z))))))))))+(((cos(log(sin(((cos(y)*sqrt((y*z)))/log((y+(y*y)))))))/sin(x))-sin(cos(sin(((((x*(z-x))-sin((y*(-0.7605))))+(cos(sqrt(y))/(-0.5535)))-(cos((0.5265))*(0.6450)))))))+(0.0405)))+sin(y))))*x))', 'u_y': 'cos(cos(((y+log(cos((z*(-0.4505)))))*(0.3767))))', 'u_z': '(z*sin((-0.6640)))'}
+
+    control_base = {'u_x' : '(sin(x)*(z*x))', 'u_y' : 'sin(y)', 'u_z' : '(x*(-0.5793))'}
 
     # set up the viability problem
     equations = {
@@ -69,16 +68,38 @@ if __name__ == "__main__" :
             "r" : 1.5
             }
 
+    # new version, with possible saturation on control function boundaries
+    equations = {
+            "x" : "x + a * u_x",
+            "y" : "y + a * u_y",
+            "z" : "z + a * u_z"
+            }
+    control = {
+            "u_x" : "",
+            "u_y" : "",
+            "u_z" : ""
+            }
+    constraints = {
+            "x" : ["x * x + y * y + z * z < r", "u_x * u_x + u_y * u_y + u_z * u_z < 1"],
+            "u_x" : ["u_x >= -1.0", "u_x <= 1.0"],
+            "u_y" : ["u_y >= -1.0", "u_y <= 1.0"],
+            "u_z" : ["u_z >= -1.0", "u_z <= 1.0"]
+            }
+    parameters = {
+            "a" : 1.0,
+            "r" : 1.5
+            }
+
     # I also need to import the special inherited class for the sphere,
     # to get the proper random generation of initial conditions
     from case_study_3d_sphere import ViabilityTheoryProblemSphere
 
     # two instances: one with the best, one with base individual
-    #vp_base = ViabilityTheoryProblemSphere(equations=equations, control=control, constraints=constraints, parameters=parameters)
-    #vp_base.set_control(control_generation_0)
+    vp_base = ViabilityTheoryProblemSphere(equations=equations, control=control, constraints=constraints, parameters=parameters)
+    vp_base.set_control(control_base)
 
-    vp_best = ViabilityTheoryProblemSphere(equations=equations, control=control, constraints=constraints, parameters=parameters)
-    vp_best.set_control(control_timed_out)
+    #vp_best = ViabilityTheoryProblemSphere(equations=equations, control=control, constraints=constraints, parameters=parameters)
+    #vp_best.set_control(control_timed_out)
 
     # create a directory to store trajectories 
     if not os.path.exists(directory_name) : os.mkdir(directory_name)
@@ -109,8 +130,8 @@ if __name__ == "__main__" :
         
         # add arguments for a vp_base and a vp_best run
         if index < 1001 :
-            #process_arguments.append( [vp_base, ic, index, directory_name, trajectory_base_file_name] )
-            process_arguments.append( [vp_best, ic, index, directory_name, trajectory_best_file_name] )
+            process_arguments.append( [vp_base, ic, index, directory_name, trajectory_base_file_name] )
+            #process_arguments.append( [vp_best, ic, index, directory_name, trajectory_best_file_name] )
 
     print("Starting the pool!")
     pool.map(process, process_arguments)

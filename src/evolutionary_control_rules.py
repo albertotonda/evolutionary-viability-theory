@@ -34,7 +34,7 @@ def no_stderr_stdout() :
 
 # steal parts from gplearn: _Program is the basically an individual class, the others are functions
 from gplearn._program import _Program
-from gplearn.functions import _Function, _function_map, add2, sub2, mul2, div2, sqrt1, log1, sin1, cos1 
+from gplearn.functions import _Function, _function_map, make_function, add2, sub2, mul2, div2, sqrt1, log1, sin1, cos1 
 
 # parts from multiprocessing, to try and have a personalized version of the multiprocessing evaluation
 from multiprocessing import Lock, Manager, Pool, TimeoutError
@@ -55,7 +55,16 @@ function2string = {
         "log" : "log",
         "sin" : "sin",
         "cos" : "cos",
+        "min" : "min",
+        "max" : "max"
         }
+
+# these two are wrapper functions, needed by gplearn to add 'min' and 'max' to the function set
+def _min(x1, x2) :
+    return np.minimum(x1, x2) # we need to use this, because gplearn's functions are designed to work on arrays
+
+def _max(x1, x2) :
+    return np.maximum(x1, x2)
 
 def equation_string_representation(individual) :
     """
@@ -121,8 +130,10 @@ def equation_string_representation(individual) :
 
             # create partial string
             intermediate_result = ""
-            if apply_stack[-1][0].arity == 2 :
+            if apply_stack[-1][0].arity == 2 and function != "min" and function != "max" :
                 intermediate_result = "(" + terminals[0] + function + terminals[1] + ")"
+            elif function == "max" or function == "min" :
+                intermediate_result = function + "(" + terminals[0] + "," + terminals[1] + ")"
             else :
                 intermediate_result = function + "(" + terminals[0] + ")"
 
@@ -226,18 +237,19 @@ def fitness_function(individual, args) :
     control_rules = { variable : equation_string_representation(control_rule) for variable, control_rule in individual.items() }
     #logger.debug("Now evaluating individual corresponding to \"%s\"..." % control_rules)
 
-    is_rule_constant = []
-    for variable, rule in control_rules.items() :
-        expression = sympy.sympify(rule)
-        is_rule_constant.append(expression.is_constant())
-
-    if all(is_rule_constant) :
-        #logger.debug("All control rules of the individual are constant, discarding...")
-        return fitness
-
     # the try / except statement has been moved up here, so that we also catch exceptions 
     # due to sympy not being able to analyze the candidate individual (a problem that came out with the sphere)
     try :
+
+        is_rule_constant = []
+        for variable, rule in control_rules.items() :
+            expression = sympy.sympify(rule)
+            is_rule_constant.append(expression.is_constant())
+
+        if all(is_rule_constant) :
+            #logger.debug("All control rules of the individual are constant, discarding...")
+            return fitness
+
         # otherwise, create a local copy of the viability problem, that will be modified only here
         vp = copy.deepcopy(vp)
         # modify it, so that the control rules are now the same as the individual
@@ -268,6 +280,8 @@ def fitness_function(individual, args) :
         #signal.alarm(0)
 
     #logger.debug("Fitness for individual \"%s\" is %.4f" % (control_rules, fitness))
+    # normalize fitness with respect to the number of initial conditions, so that it is always in (0.0,1.0)
+    fitness /= len(initial_conditions)
 
     return fitness
 
@@ -365,7 +379,10 @@ def variator(random, individual1, individual2, args) :
         logger.debug("New candidate individual: \"%s\"" % individual2string(new_individual))
         logger.debug("Parent individual to be compared against: \"%s\"" % individual2string(individual1))
         
-        is_offspring_equal_to_parent = are_individuals_equal(individual1, new_individual)
+        try :
+            is_offspring_equal_to_parent = are_individuals_equal(individual1, new_individual)
+        except Exception :
+            is_offspring_equal_to_parent = True
 
         if not is_offspring_equal_to_parent :
             offspring.append(new_individual)
@@ -425,7 +442,7 @@ def observer(population, num_generations, num_evaluations, args) :
     best_fitness = best_individual.fitness
 
     # print the equation(s) corresponding to the best individual
-    logger.info("Generation #%d (%d evaluations) Best individual: \"%s\"; Best fitness: %.4f" % (num_generations, num_evaluations, best_string, best_fitness))
+    logger.info("Generation #%d (%d evaluations) Best individual: \"%s\"; Best fitness: %.8f" % (num_generations, num_evaluations, best_string, best_fitness))
     
     # save the current generation
     file_generation = os.path.join(args["directory_output"], "generation-%d.csv" % num_generations)
@@ -511,10 +528,11 @@ def process_evaluator(arguments) :
     control_rules = { variable : equation_string_representation(control_rule) for variable, control_rule in candidate.items() }
     
     # we need to lock access to the logger, to avoid multiple processes from trying to use it at the same time
-    lock.acquire()
-    logger.debug("[%s] Starting evaluation of candidate %d..." % (str(pid), index))
+    # TODO there is a big mystery here: on a 64-core processor, everything goes well; on an 8-core, everything gets stuck; investigate use of 'nice'
+    #lock.acquire()
+    #logger.debug("[%s] Starting evaluation of candidate %d..." % (str(pid), index))
     #logger.debug("Starting evaluation of a candidate...")
-    lock.release()
+    #lock.release()
 
     # we start a timeout here, the exception raised by timeout_handler should be caught inside the function
     signal.signal(signal.SIGALRM, timeout_handler)
@@ -525,19 +543,19 @@ def process_evaluator(arguments) :
         fitness_value = fitness_function(candidate, args)  
 
         # wrap up the evaluation
-        lock.acquire()
-        logger.debug("[%s] Evaluation of candidate %d finished." % (str(pid), index))
+        #lock.acquire()
+        #logger.debug("[%s] Evaluation of candidate %d finished." % (str(pid), index))
         #logger.debug("Evaluation of candidate finished.")
-        lock.release()
+        #lock.release()
         
         # reset alarm
         signal.alarm(0)
 
     except TimeoutError as te :
         fitness_value = 0.0
-        lock.acquire()
-        logger.debug("[%s] Evaluation of candidate %d \"%s\" failed due to a timeout." % (str(pid), index, str(control_rules)))
-        lock.release()
+        #lock.acquire()
+        #logger.debug("[%s] Evaluation of candidate %d \"%s\" failed due to a timeout." % (str(pid), index, str(control_rules)))
+        #lock.release()
         signal.alarm(0)
 
     shared_fitness_list[index] = fitness_value
@@ -637,7 +655,14 @@ def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10, n_th
     vp_variables = [ variable for variable in viability_problem.equations ]
 
     # then, we setup all necessary values for GPlearn individuals, _Program instances
+    # the first thing we do is to add other functions to the function set
     function_set = [ _function_map[f] for f in ['add', 'sub', 'mul', 'div', 'sqrt', 'log', 'sin', 'cos'] ]
+
+    logger.debug("Adding extra functions to gplearn's function set...")
+    f_min = make_function(function=_min, name="min", arity=2)
+    f_max = make_function(function=_max, name="max", arity=2)
+    function_set.extend([f_min, f_max])
+
     arities = {} # 'arities' is a dictionary that contains information on the number of arguments for each function
     for function in function_set :
         arity = function.arity

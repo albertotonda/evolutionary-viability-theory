@@ -8,6 +8,9 @@ Repository for the experiments on EAs applied to viability theory
 
 ## Lessons learned and design choices
 
+### 2023-02-13
+- Actually, for the idea of 2023-02-10, we can just set a flag in the run\_simulation() function, to stop or not stop if a constraint is violated.  
+
 ### 2023-02-10
 - Remove all constraints, evaluate how long it takes to trace ten trajectories or so, with some very complicated control laws. Use this information to set up the likely timeout to stop processes.
 

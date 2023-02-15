@@ -631,10 +631,10 @@ def evaluate_individual(individual, args, index, fitness_list, thread_lock, thre
     return
 
 
-def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10, n_threads=8, pop_size=100, offspring_size=200, max_evaluations=1000, saturate_control_function_on_boundaries=False) :
+def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10, time_step=0.1, max_time=100, n_threads=8, pop_size=100, offspring_size=200, max_evaluations=1000, saturate_control_function_on_boundaries=False, directory_name="viability-theory") :
 
     # create directory with name in the date
-    directory_output = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + "-viability-theory" 
+    directory_output = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + "-" + directory_name 
     if not os.path.exists(directory_output) :
         os.makedirs(directory_output)
 
@@ -644,8 +644,8 @@ def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10, n_th
     logger.info("Setting up evolutionary algorithm...")
 
     # hard-coded values, probably to be replaced with function arguments
-    time_step = 0.1
-    max_time = 100
+    time_step = time_step #0.1
+    max_time = max_time #100
 
     # initialize the pseudo-random number generators
     prng = random.Random(random_seed)

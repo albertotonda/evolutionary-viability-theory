@@ -37,7 +37,7 @@ from gplearn._program import _Program
 from gplearn.functions import _Function, _function_map, make_function, add2, sub2, mul2, div2, sqrt1, log1, sin1, cos1 
 
 # parts from multiprocessing, to try and have a personalized version of the multiprocessing evaluation
-from multiprocessing import Lock, Manager, Pool, TimeoutError
+from multiprocessing import Manager, Process, Pool, TimeoutError
 
 # local modules
 from logging_utils import initialize_logging, close_logging
@@ -480,6 +480,18 @@ def observer(population, num_generations, num_evaluations, args) :
 
     return
 
+def queue_consumer_process(queue, logger) :
+    """
+    Process that consumes items from a queue where the other processes write
+    """
+    while True :
+        item = queue.get()
+        if item is not None :
+            logger.debug(item)
+        else :
+            break
+
+    return
 
 def multi_process_evaluator(candidates, args) :
     """
@@ -495,7 +507,8 @@ def multi_process_evaluator(candidates, args) :
 
         # create shared fitness list and a lock
         shared_fitness_list = manager.list(fitness_list)
-        lock = manager.Lock()
+        #lock = manager.Lock() # TODO this was an early attempt to use Lock() to manage shared resources; it worked poorly
+        queue = manager.Queue() # TODO maybe setting a maxsize=1000 or something could help in case of issues
 
         # create a process pool
         logger.debug("Setting up process pool...")
@@ -504,7 +517,12 @@ def multi_process_evaluator(candidates, args) :
         # map arguments to processes 
         arguments_list = []
         for index, candidate in enumerate(candidates) :
-            arguments_list.append([candidate, args, shared_fitness_list, index, lock])
+            arguments_list.append([candidate, args, shared_fitness_list, index, queue])
+
+        # start queue consumer process
+        queue.put("Queue consumer process started!")
+        queue_process = Process(target=queue_consumer_process, args=(queue, logger))
+        queue_process.start()
 
         # start evaluation
         logger.debug("Starting multi-process evaluation of %d individuals..." % len(candidates))
@@ -514,6 +532,10 @@ def multi_process_evaluator(candidates, args) :
         for i in range(0, len(shared_fitness_list)) :
             fitness_list[i] = shared_fitness_list[i]
 
+        # terminate queue consumer process
+        queue.put("Queue consumer process finished.")
+        queue_process.join()
+
     return fitness_list
 
 
@@ -521,7 +543,7 @@ def process_evaluator(arguments) :
     """
     Wrapper function for multi-process evaluation. It should set a timeout and manage exclusive access to the fitness list, to avoid issues of synchronization.
     """
-    candidate, args, shared_fitness_list, index, lock = arguments
+    candidate, args, shared_fitness_list, index, queue = arguments
 
     # let's try to perform some debugging, and for that, we need to get the process PID
     logger = args["logger"]
@@ -535,6 +557,8 @@ def process_evaluator(arguments) :
     #logger.debug("[%s] Starting evaluation of candidate %d..." % (str(pid), index))
     #logger.debug("Starting evaluation of a candidate...")
     #lock.release()
+    # instead of using a Lock() object, we are now attempting to employ a Queue()
+    queue.put("[%s] Starting evaluation of candidate %d..." % (str(pid), index))
 
     # we start a timeout here, the exception raised by timeout_handler should be caught inside the function
     signal.signal(signal.SIGALRM, timeout_handler)
@@ -549,6 +573,7 @@ def process_evaluator(arguments) :
         #logger.debug("[%s] Evaluation of candidate %d finished." % (str(pid), index))
         #logger.debug("Evaluation of candidate finished.")
         #lock.release()
+        queue.put("[%s] Evaluation of candidate %d finished." % (str(pid), index))
         
         # reset alarm
         signal.alarm(0)
@@ -558,6 +583,7 @@ def process_evaluator(arguments) :
         #lock.acquire()
         #logger.debug("[%s] Evaluation of candidate %d \"%s\" failed due to a timeout." % (str(pid), index, str(control_rules)))
         #lock.release()
+        queue.put("[%s] Evaluation of candidate %d \"%s\" failed due to a timeout." % (str(pid), index, str(control_rules)))
         signal.alarm(0)
 
     shared_fitness_list[index] = fitness_value
@@ -773,7 +799,7 @@ if __name__ == "__main__" :
     vp = ViabilityTheoryProblem(equations=equations, control=control, constraints=constraints, parameters=parameters)
     print("Evolving control rules for the following viability problem:", vp)
 
-    evolve_rules(viability_problem=vp, random_seed=42, saturate_control_function_on_boundaries=True)
+    evolve_rules(viability_problem=vp, random_seed=42, saturate_control_function_on_boundaries=True, directory_name="test-lake-eutrophication")
 
     sys.exit(0)
 

@@ -2,11 +2,20 @@
 Repository for the experiments on EAs applied to viability theory
 
 ## Ideas
-1. Add the limits to the state variables as values to seed the initial population of gplearn.
+1. Add the limits to the state variables as values to seed the initial population of gplearn. Other values (e.g. pi, e) could be also meaningful, depending on the problem.
 2. Create hash for the string representation of individuals, to avoid useless (?) fitness evaluations. However, if the same individual is evaluated in different generations, it should have different fitness values.
-3. Add 'min' and 'max' to the function set, to more easily reproduce thresholding/saturation without giving explicit instruction to the individual. Otherwise the problem might become too easy, at least for the Lake case study.
 
 ## Lessons learned and design choices
+
+### Known issues
+1. Sometimes, processes just get stuck. I added timeouts and the situation somehow improved, but it id not 100% correct. There are too many weird things going on, like sub-processes writing on stderr and the Lock() on the logger pointer basically not working properly.
+    i. When function scipy.optimize.odeint fails, since it's wrapped compiled C++, it writes directly on stderr. Even looking up redirections on stderr performed inside Python code, nothing seems to block that. Multiple processes writing at the same time on stderr can create terrible errors (and probably do).
+    ii. We finally settled for multi-process evaluation, as multi-thread is not really necessary (not that much memory is used by each process). However, even with a Manager() object and related Lock(), it seems there is something weird going on when the processes try to write on the logger pointer. I tried to create a minimal case study, and I cannot reproduce the error (!!).
+2. Function are\_individuals\_equal() tries to compare two individuals by converting them to two dictionaries of sympy expressions, and then to two strings. Apparently, there is something that does not work: in many cases, the function just returns the answer that the two individuals are equal.
+3. It would be really nice to have some debugging logs from each process, but this does not work (see point 1). One way around that would be to use a Queue(), with several processes adding stuff to the Queue and one extra process that periodically removes stuff from the Queue and writes to log.
+4. Code needs to be refactored and cleaned from all previous attempts at multi-something evaluation.
+
+## Unorganized notes
 
 ### 2023-02-13
 - Actually, for the idea of 2023-02-10, we can just set a flag in the run\_simulation() function, to stop or not stop if a constraint is violated.  

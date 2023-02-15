@@ -322,7 +322,7 @@ def variator(random, individual1, individual2, args) :
     # we are going to loop until the new individual is at least a bit different from individual1
     is_offspring_equal_to_parent = True
 
-    while is_offspring_equal_to_parent :
+    while is_offspring_equal_to_parent == True :
         # the genome of an individual is a dictionary, with one gplearn program for each control variable
         # this variator should take that into account, and consider that sometimes it's better to just change
         # one or few of the control rules, to preserve locality; at the moment, there is a probabilty that
@@ -379,6 +379,8 @@ def variator(random, individual1, individual2, args) :
         logger.debug("New candidate individual: \"%s\"" % individual2string(new_individual))
         logger.debug("Parent individual to be compared against: \"%s\"" % individual2string(individual1))
         
+        # TODO  there might be some issues with the function are_individuals_equal; if the loop never ends,
+        #       just set everything so that is_offspring_equal_to_parent is always False
         try :
             is_offspring_equal_to_parent = are_individuals_equal(individual1, new_individual)
         except Exception :

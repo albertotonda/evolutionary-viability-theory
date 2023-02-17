@@ -534,7 +534,7 @@ def multi_process_evaluator(candidates, args) :
 
         # terminate queue consumer process
         queue.put("Queue consumer process finished.")
-        queue_process.join()
+        queue_process.terminate()
 
     return fitness_list
 
@@ -799,7 +799,7 @@ if __name__ == "__main__" :
     vp = ViabilityTheoryProblem(equations=equations, control=control, constraints=constraints, parameters=parameters)
     print("Evolving control rules for the following viability problem:", vp)
 
-    evolve_rules(viability_problem=vp, random_seed=42, saturate_control_function_on_boundaries=True, directory_name="test-lake-eutrophication")
+    evolve_rules(viability_problem=vp, random_seed=42, pop_size=50, offspring_size=100, saturate_control_function_on_boundaries=True, directory_name="test-lake-eutrophication")
 
     sys.exit(0)
 

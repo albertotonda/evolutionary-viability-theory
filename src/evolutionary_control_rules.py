@@ -12,6 +12,7 @@ import random
 import signal # used to manage timeouts
 import sympy
 import sys
+import time # just used in one point to sleep for a few seconds...
 
 # all this stuff below is to prevent scipy.ode.odeint from writing to stderr in a thread-unsafe way
 # now, this part seems weird, but it's actually done to prevent one of the functions that scipy.ode uses
@@ -493,6 +494,7 @@ def queue_consumer_process(queue, logger) :
 
     return
 
+
 def multi_process_evaluator(candidates, args) :
     """
     Alternative multi-process function, that tries to impose timeouts. It's more of an attempt to see if we can improve
@@ -508,7 +510,7 @@ def multi_process_evaluator(candidates, args) :
         # create shared fitness list and a lock
         shared_fitness_list = manager.list(fitness_list)
         #lock = manager.Lock() # TODO this was an early attempt to use Lock() to manage shared resources; it worked poorly
-        queue = manager.Queue() # TODO maybe setting a maxsize=1000 or something could help in case of issues
+        queue = manager.Queue() # this is used to store and write logging messages TODO maybe setting a maxsize=1000 or something could help in case of issues
 
         # create a process pool
         logger.debug("Setting up process pool...")
@@ -534,6 +536,7 @@ def multi_process_evaluator(candidates, args) :
 
         # terminate queue consumer process
         queue.put("Queue consumer process finished.")
+        time.sleep(5)
         queue_process.terminate()
 
     return fitness_list

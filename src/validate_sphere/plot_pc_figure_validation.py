@@ -11,6 +11,7 @@ from matplotlib.patches import Circle, Polygon, Rectangle
 
 # all details of the individual
 individual_best = {
+        #"folder" : "../sphere_pc_trajectories_saturate_gen90",
         "folder" : "../sphere_pc_trajectories_saturate",
         "control" : "",
         "generation" : 100,
@@ -26,6 +27,10 @@ individual_base = {
 # first, let's read all trajectory files
 individual_best["trajectory_files"] = [ f for f in os.listdir(individual_best["folder"]) if f.startswith("trajectory-best") and f.endswith(".csv") ]
 individual_base["trajectory_files"] = [ f for f in os.listdir(individual_base["folder"]) if f.startswith("trajectory-base") and f.endswith(".csv") ]
+
+# let's see what happens if we only plot 20 trajectories, more readable
+#individual_best["trajectory_files"] = individual_best["trajectory_files"][:20]
+#individual_base["trajectory_files"] = individual_base["trajectory_files"][:20]
 
 for individual in [individual_best, individual_base] :
     for plane in [['x', 'y'], ['z', 'y']] :
@@ -96,6 +101,6 @@ for individual in [individual_best, individual_base] :
         ax.set_ylim(bottom=-1.3, top=1.3)
         fig.set_tight_layout(True)
 
-        plt.savefig("sphere-best-control-generation-%d-%s-%s.png" % (individual["generation"], plane[0], plane[1]), dpi=300)
+        plt.savefig("sphere-pc-best-control-generation-%d-%s-%s.png" % (individual["generation"], plane[0], plane[1]), dpi=300)
         plt.show()
         plt.close(fig)

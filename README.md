@@ -8,6 +8,13 @@ Evolutionary algorithms have already proven their efficiency in solving high-dim
 1. Automatically create control rules for trajectories in viability problems
 2. Find satisfying approximations for viability kernels in high dimensionality (e.g. more than 6)
 
+## Instructions
+This repository contains:
+* A class used to represent viability problems `ViabilityTheoryProblem` in `viability_theory.py`
+* An evolutionary algorithm designed to evolve sets of control rules (equations represented as Genetic Programming trees) for a given `ViabilityTheoryProblem`, in `evolutionary_control_rules.py`
+* Several case studies that rely upon the previous two: `case_study_lake.py`, `case_study_3d_sphere.py`, `case_study_pc_sphere.py`
+* The other scripts are used for validation of the best solutions found, or to plot figures
+
 ## Papers
 The code in this repository has been used for the following paper:
 

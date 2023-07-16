@@ -32,13 +32,14 @@ for i in range(0, 250) :
     individual_best["trajectory_files"].append( os.path.join(individual_best["folder"], "trajectory-best-%d.csv" % i) )
     individual_base["trajectory_files"].append( os.path.join(individual_base["folder"], "trajectory-base-%d.csv" % i) )
 
-#individual_best["trajectory_files"] = [ f for f in os.listdir(individual_best["folder"]) if f.startswith("trajectory-best") ]
-#individual_base["trajectory_files"] = [ f for f in os.listdir(individual_base["folder"]) if f.startswith("trajectory-base") ]
+individual_best["trajectory_files"] = [ f for f in os.listdir(individual_best["folder"]) if f.startswith("trajectory-best") ]
+individual_base["trajectory_files"] = [ f for f in os.listdir(individual_base["folder"]) if f.startswith("trajectory-base") ]
 #individual_base["trajectory_files"] = [ f for f in os.listdir("generation_0") if f.endswith(".csv") ]
 #individual_best["trajectory_files"] = [ f for f in os.listdir("generation_19") if f.endswith(".csv") ]
 
-for individual in [individual_best, individual_base] :
-
+#for individual in [individual_base, individual_best] :
+for individual in [individual_best] :
+    
     # let's start organizing the figure
     sns.set_theme()
     fig = plt.figure(figsize=(10, 8))

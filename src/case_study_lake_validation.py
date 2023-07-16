@@ -20,7 +20,7 @@ def process(args) :
     # there is a chance that the file already exists
     if not os.path.exists(file_name) :
         print("Running simulation for ic #%d..." % index)
-        output_values, constraint_violations = vp.run_simulation(ic, 0.01, 100, saturate_control_function_on_boundaries=True) 
+        output_values, constraint_violations = vp.run_simulation(ic, 0.01, 100, saturate_control_function_on_boundaries=False) 
         print("Saving results to file \"%s\"..." % file_name)
         df = pd.DataFrame.from_dict(output_values)
         df.to_csv(file_name, index=False)
@@ -38,7 +38,7 @@ if __name__ == "__main__" :
     ic_file_name = "lake_ic.csv"
     trajectory_base_file_name = "trajectory-base-%d.csv"
     trajectory_best_file_name = "trajectory-best-%d.csv"
-    n_ic = 1000
+    n_ic = 100
 
     control_generation_0 = "sin((L+(-0.6992)))-(log(L)-((-0.7323)-(0.7294)))"
     control_generation_10 = "sin(sin((L+(-0.6992))))-(log(L)-((-0.7323)-(0.7294)))"
@@ -47,6 +47,11 @@ if __name__ == "__main__" :
     control_generation_0_previous_experiment_1 = "log(cos((sin(L)*L)))"
     control_generation_0_previous_experiment_2 = "sin((L+-0.6992))-(L+-0.6992)"
     control_generation_0_previous_experiment_3 = "sin(((P-L)*(L-P)))"
+    
+    # this is for the most recent experiment with min/max in the function set
+    # and a large population
+    control_generation_0 = "sin(min(sin(P),(P-P)))"
+    control_generation_7 = "min((sin((-0.2277))*(L+(-0.2894))),sin(min(sin(P),(P-P))))"
 
     # set up the viability problem
     equations = {
@@ -73,10 +78,14 @@ if __name__ == "__main__" :
 
     # two instances: one with the best, one with base individual
     #vp_base = ViabilityTheoryProblem(equations=equations, control=control, constraints=constraints, parameters=parameters)
-    #vp_base.set_control({"u" : control_generation_0_previous_experiment_3})
+    #vp_base.set_control({"u" : control_generation_0})
 
-    vp_best = ViabilityTheoryProblem(equations=equations, control=control, constraints=constraints, parameters=parameters)
-    vp_best.set_control({"u" : control_generation_19})
+    #vp_best = ViabilityTheoryProblem(equations=equations, control=control, constraints=constraints, parameters=parameters)
+    #vp_best.set_control({"u" : control_generation_0})
+    
+    vp_current = ViabilityTheoryProblem(equations=equations, control=control, constraints=constraints, parameters=parameters)
+    vp_current.set_control({"u" : control_generation_7})
+    trajectory_file_name = trajectory_best_file_name
 
     # create a directory to store trajectories 
     if not os.path.exists(directory_name) : os.mkdir(directory_name)
@@ -85,7 +94,7 @@ if __name__ == "__main__" :
     if not os.path.exists(os.path.join(directory_name, ic_file_name)) :
         df_dict = {"L": [], "P": []}
         for i in range(0, n_ic) :
-            ic = vp_base.get_random_viable_point(prng)
+            ic = vp_current.get_random_viable_point(prng)
             for k, v in ic.items() :
                 df_dict[k].append(v)
 
@@ -97,7 +106,7 @@ if __name__ == "__main__" :
 
     # let's try to run with a multi-processing pool
     print("Preparing a pool of workers...")
-    pool = Pool(8)
+    pool = Pool(16)
     process_arguments = []
 
     for index, row in df.iterrows() :
@@ -106,10 +115,13 @@ if __name__ == "__main__" :
         # add arguments for a vp_base and a vp_best run
         if index < 1001 :
             #process_arguments.append( [vp_base, ic, index, directory_name, trajectory_base_file_name] )
-            process_arguments.append( [vp_best, ic, index, directory_name, trajectory_best_file_name] )
+            #process_arguments.append( [vp_best, ic, index, directory_name, trajectory_best_file_name] )
+            process_arguments.append( [vp_current, ic, index, directory_name, trajectory_file_name] )
 
     print("Starting the pool!")
     pool.map(process, process_arguments)
+    
+    print("Computation terminated successfully.")
 
     sys.exit(0)
 

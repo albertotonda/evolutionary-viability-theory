@@ -1,6 +1,8 @@
 """
 Script that implements the evolutionary loop to create control rules using Genetic Programming. I think we need to steal the individuals from gplearn, but I would like to keep the rest from inspyred, because it's better.
 """
+# TODOs
+# - add a lexicographic fitness evaluation that includes size of the trees
 import copy
 import datetime
 import inspyred
@@ -8,6 +10,7 @@ import multiprocessing
 import numpy as np
 import os
 import pandas as pd
+import platform # used to understand whether we are under Linux or Windows, for timeouts
 import random
 import signal # used to manage timeouts
 import sympy
@@ -32,6 +35,8 @@ def no_stderr_stdout() :
     sys.stdout = save_stdout
     sys.stderr = save_stderr
 # end of the stuff to prevent writing to stderr; if we find another way, all this stuff could be removed
+# UPDATE: it did not work, NOTHING can prevent the @#%!ing function from writing to stderr...so, I just
+# suppressed all printouts during individual evaluation, which is a pity because logging is cool
 
 # steal parts from gplearn: _Program is the basically an individual class, the others are functions
 from gplearn._program import _Program
@@ -153,8 +158,14 @@ def individual2string(candidate) :
     Utility function to convert an individual's genotype to a string. Individuals here are dictionaries of programs.
     """
     individual_string = ""
-
-    for variable, program in candidate.items() :
+    
+    # there is one extra key in the individual's dictionary called "id_", that is
+    # just used to keep track of the individuals' lineage; we must ignore it while
+    # we are creating the string corresponding to the individual's genotype
+    control_law_variables = [v for v in candidate if v != "id_"]
+    
+    for variable in control_law_variables :
+        program = candidate[variable]
         individual_string += "\'" + str(variable) + "\' : \'"
         individual_string += equation_string_representation(program) + "\', "
 
@@ -205,17 +216,36 @@ def generator(random, args) :
     """
 
     logger = args["logger"]
+    genotype2id = args["genotype2id"]
+    id2genotype = args["id2genotype"]
 
     # we can take into account the idea of having individuals
-    # as a list/dictionary of equations, one per control function, depending
+    # as a dictionary of equations, one per control function, depending
     # on the viability problem; so, first let's check the structure of the controls
+    # I added another element to the individual's dictionary, "id_", to keep track
+    # of individuals' lineage (and solve some bugs)
     individual = dict()
 
     logger.debug("Generating new individual...")
     for control_variable in args["vp_control_structure"] :
         individual[control_variable] = _Program(**args["gplearn_settings"])
         logger.debug("For control variable \"%s\", equation \"%s\"" % (control_variable, equation_string_representation(individual[control_variable])))
-
+        
+    # this part is to keep track of individuals' lineage
+    individual_id = args["individual_id"]
+    individual["id_"] = individual_id
+    
+    # these dictionaries are also used to keep track of individuals' genotype
+    genotype = individual2string(individual)
+    if genotype not in genotype2id :
+        genotype2id[genotype] = []
+    genotype2id[genotype].append(individual_id)
+    
+    id2genotype[individual_id] = {"genotype" : genotype, "parent" : "None", 
+                                  "created_by" : "generator", "generation" : 0} 
+    
+    args["individual_id"] += 1
+        
     return individual
 
 
@@ -235,7 +265,8 @@ def fitness_function(individual, args) :
 
     # evaluating one solution takes a considerable amount of time, so we will first make a check;
     # if all control rules defined in the individual reduce to a constant, we can discard it 
-    control_rules = { variable : equation_string_representation(control_rule) for variable, control_rule in individual.items() }
+    control_rules = { variable : equation_string_representation(control_rule) 
+                     for variable, control_rule in individual.items() if variable != "id_" } # 'id_' is a special tag
     #logger.debug("Now evaluating individual corresponding to \"%s\"..." % control_rules)
 
     # the try / except statement has been moved up here, so that we also catch exceptions 
@@ -307,7 +338,7 @@ def evaluator_multiprocess(candidates, args) :
 
 
 @inspyred.ec.variators.crossover
-def variator(random, individual1, individual2, args) :
+def variator(random, parent1, parent2, args) :
     """
     The variator for this particular problem has to be decorated as crossover, as it can perform multiple operations on one or two individuals.
     """
@@ -317,22 +348,40 @@ def variator(random, individual1, individual2, args) :
     p_subtree = args["p_subtree"]
     p_hoist = args["p_hoist"]
     p_point = args["p_point"]
+    
+    # this is used to keep track of individuals' lineage
+    id2genotype = args["id2genotype"]
+    genotype2id = args["genotype2id"]
 
     offspring = []
 
     # we are going to loop until the new individual is at least a bit different from individual1
+    # these two variables below will be used to loop until a different individual is created
+    n_attempts = 1
     is_offspring_equal_to_parent = True
+    
+    # these variables below are used to keep track of the lineage of an individual
+    parent_id = parent1["id_"]
+    created_by = ""
+    generation = args["_ec"].num_generations
 
     while is_offspring_equal_to_parent == True :
         # the genome of an individual is a dictionary, with one gplearn program for each control variable
         # this variator should take that into account, and consider that sometimes it's better to just change
         # one or few of the control rules, to preserve locality; at the moment, there is a probabilty that
         # nothing happens, but then we have to check that the new individual is actually different from individual1
-        logger.debug("Generating new individual...")
-        new_individual = { variable : None for variable in individual1 }
+        logger.debug("Generating new individual, attempt %d..." % n_attempts)
+        new_individual = { variable : None for variable in parent1 }
+
+        # we have to reset the "created_by" information, in case we are looping
+        created_by = ""
+        
+        # get the control laws in the individual (ignoring the key "id_" in the
+        # dictionary, as it is only used to keep track of the individuals' lineage)
+        control_law_variables = [v for v in new_individual if v != "id_"]
 
         program = None
-        for variable in new_individual :
+        for variable in control_law_variables :
             # let's select a probability to apply one of the mutation operators
             p = random_state.uniform()
             logger.debug("Creating gplearn program for state variable \"%s\"..." % variable)
@@ -340,57 +389,78 @@ def variator(random, individual1, individual2, args) :
             new_program = None
             if p < p_crossover :
                 logger.debug("Performing a crossover...")
-                program, removed, remains = individual1[variable].crossover(individual2[variable].program, random_state)
-
+                program, removed, remains = parent1[variable].crossover(parent2[variable].program, random_state)
+                created_by = "crossover"
+                
             elif p < (p_crossover + p_subtree) :
                 logger.debug("Performing a subtree mutation...")
-                program, removed, _ = individual1[variable].subtree_mutation(random_state)
+                program, removed, _ = parent1[variable].subtree_mutation(random_state)
+                created_by = "subtree_mutation"
 
             elif p < (p_crossover + p_subtree + p_hoist) :
                 logger.debug("Performing a hoist mutation...")
-                program, removed = individual1[variable].hoist_mutation(random_state)
+                program, removed = parent1[variable].hoist_mutation(random_state)
+                created_by = "hoist_mutation"
 
             elif p < (p_crossover + p_subtree + p_hoist + p_point) :
                 logger.debug("Performing a point mutation...")
-                program, mutated = individual1[variable].point_mutation(random_state)
+                program, mutated = parent1[variable].point_mutation(random_state)
+                created_by = "point_mutation"
 
             else :
-                logger.debug("Copying the original genome from individual1...")
-                program = individual1[variable].reproduce() 
+                logger.debug("Copying the original genome from parent1...")
+                program = parent1[variable].reproduce()
+                created_by = "copy"
+
+            # also keep track of the state variable/control law on which we operated
+            created_by += " (" + str(variable) + ");"            
 
             # create new instance of _Program
-            new_program = _Program(function_set=individual1[variable].function_set,
-                       arities=individual1[variable].arities,
-                       init_depth=individual1[variable].init_depth,
-                       init_method=individual1[variable].init_method,
-                       n_features=individual1[variable].n_features,
-                       metric=individual1[variable].metric,
-                       transformer=individual1[variable].transformer,
-                       const_range=individual1[variable].const_range,
-                       p_point_replace=individual1[variable].p_point_replace,
-                       parsimony_coefficient=individual1[variable].parsimony_coefficient,
-                       feature_names=individual1[variable].feature_names,
+            new_program = _Program(function_set=parent1[variable].function_set,
+                       arities=parent1[variable].arities,
+                       init_depth=parent1[variable].init_depth,
+                       init_method=parent1[variable].init_method,
+                       n_features=parent1[variable].n_features,
+                       metric=parent1[variable].metric,
+                       transformer=parent1[variable].transformer,
+                       const_range=parent1[variable].const_range,
+                       p_point_replace=parent1[variable].p_point_replace,
+                       parsimony_coefficient=parent1[variable].parsimony_coefficient,
+                       feature_names=parent1[variable].feature_names,
                        random_state=random_state,
                        program=program)
 
             logger.debug("New program generated: %s" % str(new_program))
             new_individual[variable] = new_program
-
+            
         # check if the new individual is identical to individual 1
         logger.debug("New candidate individual: \"%s\"" % individual2string(new_individual))
-        logger.debug("Parent individual to be compared against: \"%s\"" % individual2string(individual1))
+        logger.debug("Parent individual to be compared against: %d \"%s\"" % (parent1["id_"], individual2string(parent1)))
         
-        # TODO  there might be some issues with the function are_individuals_equal; if the loop never ends,
-        #       just set everything so that is_offspring_equal_to_parent is always False
         try :
-            is_offspring_equal_to_parent = are_individuals_equal(individual1, new_individual)
+            is_offspring_equal_to_parent = are_individuals_equal(parent1, new_individual)
         except Exception :
             is_offspring_equal_to_parent = True
 
         if not is_offspring_equal_to_parent :
             offspring.append(new_individual)
+            
+            # add information on the lineage to the dictionaries
+            individual_id = args["individual_id"]
+            genotype = individual2string(new_individual)
+            id2genotype[individual_id] = {"genotype" : genotype, "parent" : parent_id, 
+                                     "generation" : generation, "created_by" : created_by}
+            if genotype not in genotype2id :
+                genotype2id[genotype] = []
+            genotype2id[genotype].append(individual_id)
+            
+            # increase individual id
+            logger.debug("Id of the freshly created new individual: %d" % individual_id)
+            new_individual["id_"] = args["individual_id"]
+            args["individual_id"] += 1
         else :
             logger.debug("The two individuals are exactly identical! I should re-loop and create a new one")
+            n_attempts += 1
 
         # end of while: if the new individual is equal to parent individual1, we loop and try again 
 
@@ -410,23 +480,53 @@ def replacer(random, population, parents, offspring, args) :
     logger = args["logger"]
     logger.debug("Starting the replacement procedure...")
     
+    # some debugging here
+    
+    logger.debug("Initial state of the parents:")
+    for p in parents :
+        genotype = individual2string(p.candidate)
+        individual_id = p.candidate["id_"]
+        logger.debug(str(individual_id) + ":" + genotype)
+        
+    logger.debug("Initial state of the population:")
+    for i in population :
+        genotype = individual2string(i.candidate)
+        individual_id = i.candidate["id_"]
+        logger.debug(str(individual_id) + ":" + genotype)    
+        
+    logger.debug("Initial state of the offspring:")
+    for o in offspring :
+        genotype = individual2string(o.candidate)
+        individual_id = p.candidate["id_"]
+        logger.debug(str(individual_id) + ":" + genotype)
+        
+    survivors = sorted(population + offspring, key=lambda x : x.fitness, reverse=True)
+    
+    logger.debug("Final sorting of population+offspring, before culling:")
+    for s in survivors :
+        genotype = individual2string(s.candidate)
+        individual_id = p.candidate["id_"]
+        logger.debug(str(individual_id) + ":" + genotype)
+    
+    # this part below is not used at the moment, it implements the fitness rescaling
+    
     # find the best individual among the parents
-    best_parent = parents.sort(reverse=True) # highest value first
-    logger.debug("The best individual is: \"%s\"; re-evaluating on initial conditions %s" % 
-            (individual2string(best_parent.candidate), str(args["current_initial_conditions"])))
+    # best_parent = parents.sort(reverse=True) # highest value first
+    # logger.debug("The best individual is: \"%s\"; re-evaluating on initial conditions %s" % 
+    #         (individual2string(best_parent.candidate), str(args["current_initial_conditions"])))
 
-    # evaluate the best parent on the current initial conditions
-    old_best_fitness = best_parent.fitness
-    new_best_fitness = fitness_function(best_parent.candidate, args)
-    logger.debug("Previous fitness for best individual: %4.f; new fitness: %.4f" % (old_best_fitness, new_best_fitness))
+    # # evaluate the best parent on the current initial conditions
+    # old_best_fitness = best_parent.fitness
+    # new_best_fitness = fitness_function(best_parent.candidate, args)
+    # logger.debug("Previous fitness for best individual: %4.f; new fitness: %.4f" % (old_best_fitness, new_best_fitness))
 
-    # rescale old fitness values according to the new fitness value of the best individual:
-    # - parents' fitness is rescaled by fitness_value * new_best_fitness / old_best_fitness
-    for parent in parents :
-        parent.fitness = parent.fitness * new_best_fitness / old_best_fitness
+    # # rescale old fitness values according to the new fitness value of the best individual:
+    # # - parents' fitness is rescaled by fitness_value * new_best_fitness / old_best_fitness
+    # for parent in parents :
+    #     parent.fitness = parent.fitness * new_best_fitness / old_best_fitness
 
-    # now, sort by fitness and save the best using a mu+lambda scheme
-    survivors = sorted(parents + offspring, lambda x : x.fitness, reverse=True)
+    # # now, sort by fitness and save the best using a mu+lambda scheme
+    # survivors = sorted(parents + offspring, lambda x : x.fitness, reverse=True)
 
     return survivors[:len(population)]
 
@@ -438,7 +538,12 @@ def observer(population, num_generations, num_evaluations, args) :
     """
 
     logger = args["logger"]
+    id2genotype = args["id2genotype"]
+    genotype2id = args["genotype2id"]
     best_individual = max(population, key=lambda x : x.fitness)
+
+    print(genotype2id)
+    print(id2genotype)
     
     # get some information
     best_string = individual2string(best_individual.candidate)
@@ -453,9 +558,15 @@ def observer(population, num_generations, num_evaluations, args) :
 
     dictionary_generation = {
             "generation" : [],
+            "id" : [],
+            "id_in_genotype_dictionary" : [],
+            "birthdate" : [],
             "individual" : [],
             "individual_gplearn" : [],
-            "fitness" : []
+            "fitness" : [],
+            "generation_created" : [],
+            "created_by" : [],
+            "parent" : [],
             }
 
     dictionary_generation["generation"] = [num_generations] * len(population)
@@ -464,9 +575,37 @@ def observer(population, num_generations, num_evaluations, args) :
         dictionary_generation["initial_conditions_%d" % i] = [str(ci)] * len(population)
 
     for individual in population :
-        dictionary_generation["individual"].append(individual2string(individual.candidate))
+        string_representation = individual2string(individual.candidate)
+        dictionary_generation["individual"].append(string_representation)
         dictionary_generation["individual_gplearn"].append(individual_to_gplearn_string(individual.candidate))
         dictionary_generation["fitness"].append(individual.fitness)
+        dictionary_generation["birthdate"].append(individual.birthdate)
+        
+        # here we collect information from the data structures used to track
+        # individuals' phyolgeny
+        individual_id = genotype2id.get(string_representation, -1)
+        dictionary_generation["id_in_genotype_dictionary"].append(individual_id)
+        
+        # but now we can directly use the individual "id_" tag inside the individual
+        individual_id = individual.candidate["id_"]
+        dictionary_generation["id"].append(individual_id)
+        
+        generation_created = -1
+        created_by = "Not found"
+        parent = "Not found"
+        
+        if individual_id in id2genotype :
+            logger.info("Individual id %d found in dictionary" % individual_id)
+            generation_created = id2genotype[individual_id]["generation"]
+            created_by = id2genotype[individual_id]["created_by"]
+            parent = id2genotype[individual_id]["parent"]
+        else :
+            logger.info("Individual id %d not found!" % individual_id)
+            
+        dictionary_generation["generation_created"].append(generation_created)
+        dictionary_generation["created_by"].append(created_by)
+        dictionary_generation["parent"].append(parent)
+        
 
     # conver the dictionary to a pandas DataFrame, and sort it by descending fitness (easier to read later)
     df = pd.DataFrame.from_dict(dictionary_generation)
@@ -503,7 +642,7 @@ def multi_process_evaluator(candidates, args) :
     n_processes = args["n_threads"]
     logger = args["logger"]
 
-    # create shared fitness list, using a Manager
+    # create shared fitness list, using a Manager to arbitrate concurrent access
     fitness_list = [0.0] * len(candidates)
     with Manager() as manager :
 
@@ -552,7 +691,8 @@ def process_evaluator(arguments) :
     logger = args["logger"]
     process = multiprocessing.current_process()
     pid = process.pid
-    control_rules = { variable : equation_string_representation(control_rule) for variable, control_rule in candidate.items() }
+    control_rules = { variable : equation_string_representation(control_rule) 
+                     for variable, control_rule in candidate.items() if variable != "id_"}
     
     # we need to lock access to the logger, to avoid multiple processes from trying to use it at the same time
     # TODO there is a big mystery here: on a 64-core processor, everything goes well; on an 8-core, everything gets stuck; investigate use of 'nice'
@@ -564,8 +704,10 @@ def process_evaluator(arguments) :
     queue.put("[%s] Starting evaluation of candidate %d..." % (str(pid), index))
 
     # we start a timeout here, the exception raised by timeout_handler should be caught inside the function
-    signal.signal(signal.SIGALRM, timeout_handler)
-    signal.alarm(3600*2) # two hours
+    # unfortunately, the SIGALARM only works on Linux ^_^;
+    if platform.system() == 'Linux' :
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(3600*2) # two hours
 
     try :
         # call the true evaluation function
@@ -578,8 +720,9 @@ def process_evaluator(arguments) :
         #lock.release()
         queue.put("[%s] Evaluation of candidate %d finished." % (str(pid), index))
         
-        # reset alarm
-        signal.alarm(0)
+        # reset alarm; again, it only works on Linux systems
+        if platform.system() == 'Linux' :
+            signal.alarm(0)
 
     except TimeoutError as te :
         fitness_value = 0.0
@@ -660,7 +803,43 @@ def evaluate_individual(individual, args, index, fitness_list, thread_lock, thre
     return
 
 
-def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10, time_step=0.1, max_time=100, n_threads=8, pop_size=100, offspring_size=200, max_evaluations=1000, saturate_control_function_on_boundaries=False, directory_name="viability-theory") :
+def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10, 
+                 time_step=0.1, max_time=100, n_threads=8, pop_size=100, offspring_size=200, 
+                 max_evaluations=1000, saturate_control_function_on_boundaries=False, 
+                 directory_name="viability-theory") :
+    """
+    This function implements the main evolutionary loop.
+
+    Parameters
+    ----------
+    viability_problem : TYPE
+        DESCRIPTION.
+    random_seed : TYPE, optional
+        DESCRIPTION. The default is 0.
+    n_initial_conditions : TYPE, optional
+        DESCRIPTION. The default is 10.
+    time_step : TYPE, optional
+        DESCRIPTION. The default is 0.1.
+    max_time : TYPE, optional
+        DESCRIPTION. The default is 100.
+    n_threads : TYPE, optional
+        DESCRIPTION. The default is 8.
+    pop_size : TYPE, optional
+        DESCRIPTION. The default is 100.
+    offspring_size : TYPE, optional
+        DESCRIPTION. The default is 200.
+    max_evaluations : TYPE, optional
+        DESCRIPTION. The default is 1000.
+    saturate_control_function_on_boundaries : TYPE, optional
+        DESCRIPTION. The default is False.
+    directory_name : TYPE, optional
+        DESCRIPTION. The default is "viability-theory".
+
+    Returns
+    -------
+    None.
+
+    """
 
     # create directory with name in the date
     directory_output = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + "-" + directory_name 
@@ -677,6 +856,7 @@ def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10, time
     max_time = max_time #100
 
     # initialize the pseudo-random number generators
+    logger.info("All pseudo-random number generators are initialized with seed: %d" % random_seed)
     prng = random.Random(random_seed)
     nprs = np.random.RandomState(random_seed) 
 
@@ -689,6 +869,8 @@ def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10, time
     # the first thing we do is to add other functions to the function set
     function_set = [ _function_map[f] for f in ['add', 'sub', 'mul', 'div', 'sqrt', 'log', 'sin', 'cos'] ]
 
+    # these are added separately, because they are not part of gplearn's base
+    # function set, but have been added by us
     logger.debug("Adding extra functions to gplearn's function set...")
     f_min = make_function(function=_min, name="min", arity=2)
     f_max = make_function(function=_max, name="max", arity=2)
@@ -714,12 +896,18 @@ def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10, time
             "parsimony_coefficient" : 0.01,
             "program" : None,
             }
+    
+    # it could be useful to keep track of the individuals' lineage, here is a
+    # data structure (or two) that will be used for that
+    genotype2id = {} # string conversion to [individual id_1, individual_id_2, ...]
+    id2genotype = {} # individual id to: {string conversion, generation}
+    individual_id = 0
 
     # we use inspyred's base stuff to manage the evolution
     ea = inspyred.ec.EvolutionaryComputation(prng)
     # these functions are pre-programmed in inspyred
     ea.selector = inspyred.ec.selectors.tournament_selection 
-    ea.replacer = inspyred.ec.replacers.plus_replacement
+    ea.replacer = replacer #inspyred.ec.replacers.plus_replacement
     ea.terminator = inspyred.ec.terminators.evaluation_termination
     # these functions are custom and inside this script
     ea.variator = variator
@@ -749,7 +937,7 @@ def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10, time
                             n_threads = n_threads,
                             random_seed = random_seed, # this is the numpy random number generator, used by gplearn
                             random = prng, # this is the random.Random instance used by inspyred
-                            random_state = nprs,
+                            random_state = nprs, # and this is a numpy random number generator
                             vp_control_structure = vp_control_structure,
                             viability_problem = viability_problem,
                             # these parameters below are used for the evaluation of candidate solutions
@@ -765,7 +953,12 @@ def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10, time
                             p_point = 0.1,
                             # should we saturate the control rules on the boundaries?
                             saturate_control_function_on_boundaries = saturate_control_function_on_boundaries,
+                            # data structures to keep track of the individuals' lineage
+                            id2genotype = id2genotype,
+                            genotype2id = genotype2id,
+                            individual_id = individual_id,
                             # this is a flag that will be used for rescaling the fitness
+                            # TODO: at the moment, it is probably not used anywhere
                             rescale_fitness = True,
                             
                             )
@@ -776,6 +969,8 @@ def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10, time
 
 if __name__ == "__main__" :
     
+    # this "main" function here is just a simple test on the Lake Eutrophication
+    # case study
     equations = {
             "L" : "u",
             "P" : "-b * P + L + r * P**q/(m**q + P**q)"
@@ -793,7 +988,6 @@ if __name__ == "__main__" :
             "m" : 1.0,
             "umin" : -0.09,
             "umax" : 0.09,
-            #"Lmin" : 0.01, # TODO in fact, it's 0.1
             "Lmin" : 0.1,
             "Lmax" : 1.0,
             "Pmax" : 1.4,
@@ -802,7 +996,9 @@ if __name__ == "__main__" :
     vp = ViabilityTheoryProblem(equations=equations, control=control, constraints=constraints, parameters=parameters)
     print("Evolving control rules for the following viability problem:", vp)
 
-    evolve_rules(viability_problem=vp, random_seed=42, pop_size=50, offspring_size=100, saturate_control_function_on_boundaries=True, directory_name="test-lake-eutrophication")
+    evolve_rules(viability_problem=vp, random_seed=42, pop_size=10, offspring_size=10, 
+                 n_threads=16, saturate_control_function_on_boundaries=False, 
+                 directory_name="test-lake-eutrophication")
 
     sys.exit(0)
 

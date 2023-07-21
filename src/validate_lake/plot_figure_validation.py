@@ -37,8 +37,8 @@ individual_base["trajectory_files"] = [ f for f in os.listdir(individual_base["f
 #individual_base["trajectory_files"] = [ f for f in os.listdir("generation_0") if f.endswith(".csv") ]
 #individual_best["trajectory_files"] = [ f for f in os.listdir("generation_19") if f.endswith(".csv") ]
 
-#for individual in [individual_base, individual_best] :
-for individual in [individual_best] :
+for individual in [individual_base, individual_best] :
+#for individual in [individual_best] :
     
     # let's start organizing the figure
     sns.set_theme()

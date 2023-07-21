@@ -52,6 +52,8 @@ if __name__ == "__main__" :
     # and a large population
     control_generation_0 = "sin(min(sin(P),(P-P)))"
     control_generation_7 = "min((sin((-0.2277))*(L+(-0.2894))),sin(min(sin(P),(P-P))))"
+    control_generation_10 = "min((sin((-0.2277))*(L+(-0.2894))),sin((L-L)))"
+    control_generation_13 = "min((sin(sin((-0.2277)))*(L+(-0.2894))),sin((P-P)))"
 
     # set up the viability problem
     equations = {
@@ -84,7 +86,7 @@ if __name__ == "__main__" :
     #vp_best.set_control({"u" : control_generation_0})
     
     vp_current = ViabilityTheoryProblem(equations=equations, control=control, constraints=constraints, parameters=parameters)
-    vp_current.set_control({"u" : control_generation_7})
+    vp_current.set_control({"u" : control_generation_13})
     trajectory_file_name = trajectory_best_file_name
 
     # create a directory to store trajectories 

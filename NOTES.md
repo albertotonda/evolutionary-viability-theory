@@ -17,6 +17,12 @@ Repository for the experiments on EAs applied to viability theory
 
 ## Unorganized notes
 
+### 2023-07-19
+The replacer seems surprisingly to be ok (!!). The issue is likely in the genetic operators, somehow they also change the parent (??).
+
+### 2023-07-18
+There are some issues with the propagation of individuals in the population. I think that the replacer has some issues, maybe it's not using deepcopy?
+
 ### 2023-02-13
 - Actually, for the idea of 2023-02-10, we can just set a flag in the run\_simulation() function, to stop or not stop if a constraint is violated.  
 

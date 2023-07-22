@@ -184,7 +184,7 @@ def individual_to_gplearn_string(candidate) :
 
     return individual_string[:-2] # remove the last ', '
 
-def are_individuals_equal(individual1, individual2) :
+def are_individuals_equal(individual1, individual2, logger=None) :
     """
     Utility function, to check whether individuals are identical.
     """
@@ -193,6 +193,9 @@ def are_individuals_equal(individual1, individual2) :
     # which is also part of the dictionary composing the individual's genome, but
     # is only used to keep track of the individuals' lineage
     variables = [v for v in individual1 if v != "id_"]
+    
+    if logger is not None :
+        logger.debug("Comparing individuals using are_individuals_equal...")
     
     for variable in variables :
         expr1 = sympy.sympify(equation_string_representation(individual1[variable]))
@@ -210,6 +213,11 @@ def are_individuals_equal(individual1, individual2) :
         string1 = str(expr1)
         string2 = str(expr2)
         
+        # some (optional) debugging
+        if logger is not None :
+            logger.debug("Variable \"%s\", individual 1: \"%s\"" % (variable, string1))
+            logger.debug("Variable \"%s\", individual 2: \"%s\"" % (variable, string2))
+            
         # if even one of the equations in the individual's genome is different,
         # the two individuals are different
         if string2 != string1 :

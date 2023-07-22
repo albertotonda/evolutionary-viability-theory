@@ -453,7 +453,7 @@ def variator(random, parent1, parent2, args) :
         logger.debug("Parent individual to be compared against: %d \"%s\"" % (parent1["id_"], individual2string(parent1)))
         
         try :
-            is_offspring_equal_to_parent = are_individuals_equal(parent1, new_individual)
+            is_offspring_equal_to_parent = are_individuals_equal(parent1, new_individual, logger)
         except Exception :
             logger.debug("Evaluating the similarity between individuals caused an exception, considering them different by default, to avoid issues...")
             is_offspring_equal_to_parent = False

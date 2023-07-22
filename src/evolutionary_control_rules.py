@@ -188,8 +188,13 @@ def are_individuals_equal(individual1, individual2) :
     """
     Utility function, to check whether individuals are identical.
     """
-
-    for variable in individual1 :
+    
+    # we consider only variables that are actually part of the problem, excluding "id_",
+    # which is also part of the dictionary composing the individual's genome, but
+    # is only used to keep track of the individuals' lineage
+    variables = [v for v in individual1 if v != "id_"]
+    
+    for variable in variables :
         expr1 = sympy.sympify(equation_string_representation(individual1[variable]))
         expr2 = sympy.sympify(equation_string_representation(individual2[variable]))
 
@@ -204,7 +209,9 @@ def are_individuals_equal(individual1, individual2) :
         # and then back to string, would both be "L + P")
         string1 = str(expr1)
         string2 = str(expr2)
-
+        
+        # if even one of the equations in the individual's genome is different,
+        # the two individuals are different
         if string2 != string1 :
             return False
 
@@ -440,7 +447,8 @@ def variator(random, parent1, parent2, args) :
         try :
             is_offspring_equal_to_parent = are_individuals_equal(parent1, new_individual)
         except Exception :
-            is_offspring_equal_to_parent = True
+            logger.debug("Evaluating the similarity between individuals caused an exception, considering them different by default, to avoid issues...")
+            is_offspring_equal_to_parent = False
 
         if not is_offspring_equal_to_parent :
             offspring.append(new_individual)
@@ -505,7 +513,7 @@ def replacer(random, population, parents, offspring, args) :
     logger.debug("Final sorting of population+offspring, before culling:")
     for s in survivors :
         genotype = individual2string(s.candidate)
-        individual_id = p.candidate["id_"]
+        individual_id = s.candidate["id_"]
         logger.debug(str(individual_id) + ":" + genotype)
     
     # this part below is not used at the moment, it implements the fitness rescaling

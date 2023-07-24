@@ -17,6 +17,11 @@ Repository for the experiments on EAs applied to viability theory
 
 ## Unorganized notes
 
+### 2023-07-24
+I found out what the issue was. It's inside inspyred.ec.replacers.plus_replacement, and I will have to create a fork and make a pull request. For the moment, I fixed it for our application, using an ad-hoc replacer.
+
+Now, there is another issue that came out: comparing individuals sometimes creates an exception because one of the individuals (could be the father!) contains imaginary numbers or some other numerical issue like that. For example, min(sqrt(-1)) does not work, because the min function cannot deal with imaginary numbers. In order to avoid that, we could perform a sympification of the individuals BEFORE adding them to the population (which is not performed by the generator, for example). If the sympification raises an exception, we stop.
+
 ### 2023-07-19
 The replacer seems surprisingly to be ok (!!). The issue is likely in the genetic operators, somehow they also change the parent (??).
 

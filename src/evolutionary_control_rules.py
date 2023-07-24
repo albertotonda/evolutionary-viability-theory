@@ -225,6 +225,22 @@ def are_individuals_equal(individual1, individual2, logger=None) :
 
     return True
 
+def is_equation_valid(program) :
+    """
+    This function simply checks whether a program created by GP is a valid symbolic
+    expression, that can be parsed by sympy. In some cases, GP will create invalid
+    expressions, such as min(sqrt(-1.0)); 'min' cannot accept imaginary arguments.
+    """
+    
+    is_valid = True
+    
+    try :
+        expression = sympy.sympify(equation_string_representation(program))
+    except Exception :
+        is_valid = False    
+    
+    return is_valid
+
 def generator(random, args) :
     """
     Generates the initial population for the evolutionary algorithm, using gplearn.
@@ -243,8 +259,17 @@ def generator(random, args) :
 
     logger.debug("Generating new individual...")
     for control_variable in args["vp_control_structure"] :
-        individual[control_variable] = _Program(**args["gplearn_settings"])
-        logger.debug("For control variable \"%s\", equation \"%s\"" % (control_variable, equation_string_representation(individual[control_variable])))
+        is_valid = False
+        while not is_valid :
+            individual[control_variable] = _Program(**args["gplearn_settings"])
+            logger.debug("For control variable \"%s\", equation \"%s\"" % 
+                         (control_variable, equation_string_representation(individual[control_variable])))
+            
+            # check if the equation is valid
+            is_valid = is_equation_valid(individual[control_variable])
+            
+            if not is_valid :
+                logger.debug("Generated equation could not be converted to sympy format. Re-generating...")
         
     # this part is to keep track of individuals' lineage
     individual_id = args["individual_id"]
@@ -887,6 +912,7 @@ def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10,
 
     # these are added separately, because they are not part of gplearn's base
     # function set, but have been added by us
+    # TODO: make this part optional, add min and max only if the saturation is NOT set to True
     logger.debug("Adding extra functions to gplearn's function set...")
     f_min = make_function(function=_min, name="min", arity=2)
     f_max = make_function(function=_max, name="max", arity=2)
@@ -985,36 +1011,107 @@ def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10,
 
 if __name__ == "__main__" :
     
+    # another test: there are some issues with the function are_individuals_equal
+    # so I am trying a bit of debugging here
+    #"'u_s' : '(theta/theta)', 'u_t' : 'sqrt(cos(((-0.0867)*(-0.1229))))', 'u_p' : '(max(log((-0.7106)),log(s))*sin(sin((-0.3482))))'"
+    #"'u_s' : 'max(s,log((-0.5482)))', 'u_t' : 'sqrt(max(cos(s),min((0.8731),theta)))', 'u_p' : '(max(log((-0.7106)),log(s))*sin(sin((-0.3482))))'"
+    
+    # let's use the built-in function to generate a random individual; however, I need
+    # to first set up the 'args' dictionary, which takes a bit of effort
+    # as we need to initialize gplearn's stuff
+    vp_variables = ["theta", "phi", "rho"]
+    function_set = [ _function_map[f] for f in ['add', 'sub', 'mul', 'div', 'sqrt', 'log', 'sin', 'cos'] ]
+    f_min = make_function(function=_min, name="min", arity=2)
+    f_max = make_function(function=_max, name="max", arity=2)
+    function_set.extend([f_min, f_max])
+    
+    nprs = np.random.RandomState() 
+    
+    arities = {} # 'arities' is a dictionary that contains information on the number of arguments for each function
+    for function in function_set :
+        arity = function.arity
+        arities[arity] = arities.get(arity, [])
+        arities[arity].append(function)
+    
+    gplearn_settings = {
+            "function_set" : function_set,
+            "arities" : arities,
+            "init_depth" : (2, 4),
+            "init_method" : "half and half",
+            "n_features" : len(vp_variables),
+            "feature_names" : vp_variables,
+            "const_range" : (-1.0, 1.0),
+            "metric" : None,
+            "p_point_replace" : 0.5,
+            "random_state" : nprs,
+            "parsimony_coefficient" : 0.01,
+            "program" : None,
+            }
+    
+    # we also need to set up a logger
+    import logging
+    logger = logging.getLogger("example_logger")
+    logger.setLevel(logging.DEBUG)
+    formatter = logging.Formatter("[%(levelname)s %(asctime)s] %(message)s",
+                                  "%Y-%m-%d %H:%M:%S")
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    
+    # set up the 'args' dictionary
+    args = dict()
+    args["gplearn_settings"] = gplearn_settings
+    args["individual_id"] = 1
+    args["logger"] = logger
+    args["genotype2id"] = dict()
+    args["id2genotype"] = dict()
+    args["vp_control_structure"] = {"u_s" : None, "u_t" : None, "u_p" : None}
+    
+    # call the function twice
+    individual_1 = generator(None, args)
+    individual_2 = generator(None, args)
+    
+    # compare the two individuals
+    value = are_individuals_equal(individual_1, individual_2, logger)
+    logger.info("The function sees the two individual as equal? %s" % str(value))
+    
+    # close logger
+    for handler in logger.handlers:
+        handler.close()
+        logger.removeHandler(handler)
+    
     # this "main" function here is just a simple test on the Lake Eutrophication
     # case study
-    equations = {
-            "L" : "u",
-            "P" : "-b * P + L + r * P**q/(m**q + P**q)"
-            }
-    control = {"u" : ""}
-    constraints = {
-            "u" : ["u >= umin", "u <= umax"],
-            "L" : ["L >= Lmin", "L <= Lmax"],
-            "P" : ["P >= 0", "P <= Pmax"],
-            }
-    parameters = {
-            "b" : 0.8,
-            "r" : 1.0,
-            "q" : 8.0,
-            "m" : 1.0,
-            "umin" : -0.09,
-            "umax" : 0.09,
-            "Lmin" : 0.1,
-            "Lmax" : 1.0,
-            "Pmax" : 1.4,
-            }
-
-    vp = ViabilityTheoryProblem(equations=equations, control=control, constraints=constraints, parameters=parameters)
-    print("Evolving control rules for the following viability problem:", vp)
-
-    evolve_rules(viability_problem=vp, random_seed=42, pop_size=10, offspring_size=10, 
-                 n_threads=16, saturate_control_function_on_boundaries=False, 
-                 directory_name="test-lake-eutrophication")
+    if False :
+        equations = {
+                "L" : "u",
+                "P" : "-b * P + L + r * P**q/(m**q + P**q)"
+                }
+        control = {"u" : ""}
+        constraints = {
+                "u" : ["u >= umin", "u <= umax"],
+                "L" : ["L >= Lmin", "L <= Lmax"],
+                "P" : ["P >= 0", "P <= Pmax"],
+                }
+        parameters = {
+                "b" : 0.8,
+                "r" : 1.0,
+                "q" : 8.0,
+                "m" : 1.0,
+                "umin" : -0.09,
+                "umax" : 0.09,
+                "Lmin" : 0.1,
+                "Lmax" : 1.0,
+                "Pmax" : 1.4,
+                }
+    
+        vp = ViabilityTheoryProblem(equations=equations, control=control, constraints=constraints, parameters=parameters)
+        print("Evolving control rules for the following viability problem:", vp)
+    
+        evolve_rules(viability_problem=vp, random_seed=42, pop_size=10, offspring_size=10, 
+                     n_threads=16, saturate_control_function_on_boundaries=False, 
+                     directory_name="test-lake-eutrophication")
 
     sys.exit(0)
 

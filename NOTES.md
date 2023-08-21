@@ -4,6 +4,7 @@ Repository for the experiments on EAs applied to viability theory
 ## Ideas
 1. Add the limits to the state variables as values to seed the initial population of gplearn. Other values (e.g. pi, e) could be also meaningful, depending on the problem.
 2. Create hash for the string representation of individuals, to avoid useless (?) fitness evaluations. However, if the same individual is evaluated in different generations, it should have different fitness values.
+3. Fitness function could keep evaluating trajectories that fail constraints, by taking into account how much they fail.
 
 ## Lessons learned and design choices
 

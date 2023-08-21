@@ -912,12 +912,15 @@ def evolve_rules(viability_problem, random_seed=0, n_initial_conditions=10,
 
     # these are added separately, because they are not part of gplearn's base
     # function set, but have been added by us
-    # TODO: make this part optional, add min and max only if the saturation is NOT set to True
-    logger.debug("Adding extra functions to gplearn's function set...")
-    f_min = make_function(function=_min, name="min", arity=2)
-    f_max = make_function(function=_max, name="max", arity=2)
-    function_set.extend([f_min, f_max])
-
+    if not saturate_control_function_on_boundaries :
+        logger.debug("Adding extra functions to gplearn's function set...")
+        f_min = make_function(function=_min, name="min", arity=2)
+        f_max = make_function(function=_max, name="max", arity=2)
+        function_set.extend([f_min, f_max])
+    else :
+        logger.debug("Functions 'min' and 'max' are not added to the function set, as the control laws are set to saturate on boundaries")
+            
+        
     arities = {} # 'arities' is a dictionary that contains information on the number of arguments for each function
     for function in function_set :
         arity = function.arity
